@@ -35,6 +35,7 @@ services:
     volumes:
       - ./video-worker:/app
       - ./storage/output:/app/output
+      - whisper_cache:/root/.cache/whisper
     depends_on:
       - video-api
       - redis
@@ -73,3 +74,4 @@ networks:
 
 volumes:
   minio_data:
+  whisper_cache:

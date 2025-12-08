@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import Optional, Dict, Any
 import uuid
 import redis
 import json
@@ -73,6 +73,69 @@ async def process_video(request: ProcessVideoRequest):
         status="accepted",
         job_id=job_id
     )
+
+
+# ==================== CAPTION FEATURE ====================
+
+class CaptionSettings(BaseModel):
+    """Settings for caption styling"""
+    font_family: str = "Montserrat"
+    font_size: int = 60
+    line_color: str = "#FFFFFF"
+    word_color: str = "#FFDD5C"  # Highlight color for current word
+    all_caps: bool = True
+    max_words_per_line: int = 3
+    bold: bool = True
+    italic: bool = False
+    underline: bool = False
+    strikeout: bool = False
+    outline_width: int = 3
+    shadow_offset: int = 2
+    position: str = "bottom_center"
+    style: str = "highlight"  # highlight, karaoke, default
+
+class AddCaptionsRequest(BaseModel):
+    """Request to add captions to a video"""
+    video_url: str  # URL of the video (MinIO or external)
+    language: str = "id"  # Language code for Whisper
+    model: str = "medium"  # Whisper model: tiny, base, small, medium, large
+    settings: Optional[CaptionSettings] = None
+    callback_url: Optional[str] = None
+
+class AddCaptionsResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/add_captions", response_model=AddCaptionsResponse)
+async def add_captions(request: AddCaptionsRequest):
+    """
+    Add captions to a video using Whisper transcription
+    
+    - video_url: URL of the source video
+    - language: Language code (default: "id" for Indonesian)
+    - settings: Caption styling settings
+    """
+    job_id = f"caption_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "caption",
+        "video_url": request.video_url,
+        "language": request.language,
+        "model": request.model,
+        "settings": request.settings.model_dump() if request.settings else {},
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("caption_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return AddCaptionsResponse(
+        status="accepted",
+        job_id=job_id
+    )
+
 
 @app.get("/job/{job_id}")
 async def get_job_status(job_id: str):
