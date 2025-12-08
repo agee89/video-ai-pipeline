@@ -137,6 +137,64 @@ async def add_captions(request: AddCaptionsRequest):
     )
 
 
+# ==================== TRANSCRIBE YOUTUBE ====================
+
+class TranscribeYoutubeRequest(BaseModel):
+    """Request to transcribe a YouTube video"""
+    youtube_url: str
+    language: str = "id"
+    use_whisper: bool = False  # False=YouTube transcript (fast), True=Whisper (accurate)
+    model: str = "medium"  # Only used if use_whisper=True
+    start_time: Optional[str] = None  # Optional: mm:ss or hh:mm:ss
+    end_time: Optional[str] = None    # Optional: mm:ss or hh:mm:ss
+
+class TranscribeYoutubeResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/transcribe_youtube", response_model=TranscribeYoutubeResponse)
+async def transcribe_youtube(request: TranscribeYoutubeRequest):
+    """
+    Transcribe a YouTube video and get transcript with timestamps
+    
+    - youtube_url: YouTube video URL
+    - language: Language code (default: "id" for Indonesian)
+    - use_whisper: False=use YouTube transcript (fast), True=use Whisper AI (accurate)
+    - model: Whisper model, only used if use_whisper=True
+    - start_time: Optional start time (mm:ss or hh:mm:ss)
+    - end_time: Optional end time (mm:ss or hh:mm:ss)
+    """
+    job_id = f"transcribe_{uuid.uuid4().hex[:8]}"
+    
+    # Parse times if provided
+    start_seconds = None
+    end_seconds = None
+    if request.start_time:
+        start_seconds = parse_time_to_seconds(request.start_time)
+    if request.end_time:
+        end_seconds = parse_time_to_seconds(request.end_time)
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "transcribe_youtube",
+        "youtube_url": request.youtube_url,
+        "language": request.language,
+        "use_whisper": request.use_whisper,
+        "model": request.model,
+        "start_time": start_seconds,
+        "end_time": end_seconds,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("transcribe_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return TranscribeYoutubeResponse(
+        status="accepted",
+        job_id=job_id
+    )
+
+
 @app.get("/job/{job_id}")
 async def get_job_status(job_id: str):
     status = redis_client.get(f"job:{job_id}:status")

@@ -94,7 +94,87 @@ curl -X POST http://host.docker.internal:8000/add_captions \
 
 ---
 
-## 3. Check Job Status
+## 3. Transcribe YouTube
+
+Dapatkan transcript dari video YouTube dengan timestamps.
+
+### Mode 1: YouTube Transcript (Default - CEPAT)
+
+Mengambil subtitle langsung dari YouTube. Sangat cepat, tidak perlu download video.
+
+```bash
+curl -X POST http://host.docker.internal:8000/transcribe_youtube \
+  -H "Content-Type: application/json" \
+  -d '{
+    "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+    "language": "id"
+  }'
+```
+
+### Mode 2: Whisper AI (AKURAT)
+
+Transcribe menggunakan Whisper AI. Lebih akurat, tapi lebih lambat.
+
+```bash
+curl -X POST http://host.docker.internal:8000/transcribe_youtube \
+  -H "Content-Type: application/json" \
+  -d '{
+    "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+    "language": "id",
+    "use_whisper": true,
+    "model": "medium"
+  }'
+```
+
+### Transcribe Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `youtube_url` | string | required | YouTube video URL |
+| `language` | string | "id" | Language code |
+| `use_whisper` | bool | false | false=YouTube (cepat), true=Whisper (akurat) |
+| `model` | string | "medium" | Whisper model (hanya jika use_whisper=true) |
+| `start_time` | string | null | Optional start (mm:ss) |
+| `end_time` | string | null | Optional end (mm:ss) |
+
+### Perbandingan Mode
+
+| Mode | Kecepatan | Akurasi | Kebutuhan |
+|------|-----------|---------|-----------|
+| YouTube | ~5 detik | Baik | Video harus punya subtitle |
+| Whisper | ~5 menit | Sangat baik | Download video + transcribe |
+
+### Response
+
+```json
+{
+  "job_id": "transcribe_abc123",
+  "video_id": "VIDEO_ID",
+  "language": "id",
+  "source": "youtube",
+  "transcript": {
+    "text": "Teks lengkap transkrip...",
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 3.5,
+        "text": "Kalimat pertama"
+      },
+      {
+        "start": 3.5,
+        "end": 7.2,
+        "text": "Kalimat kedua"
+      }
+    ]
+  }
+}
+```
+
+> **Note**: Jika YouTube transcript tidak tersedia, sistem akan otomatis fallback ke Whisper.
+
+---
+
+## 4. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -102,7 +182,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 4. Download Result
+## 5. Download Result
 
 ```bash
 # External access (browser)

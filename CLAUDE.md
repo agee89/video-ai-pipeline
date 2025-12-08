@@ -90,6 +90,53 @@ Tambahkan caption ke video menggunakan Whisper.
 }
 ```
 
+### POST /transcribe_youtube
+Dapatkan transcript dari video YouTube dengan timestamps.
+
+**Mode 1: YouTube Transcript (Default - CEPAT)**
+```json
+{
+  "youtube_url": "https://youtube.com/watch?v=...",
+  "language": "id"
+}
+```
+
+**Mode 2: Whisper AI (AKURAT)**
+```json
+{
+  "youtube_url": "https://youtube.com/watch?v=...",
+  "language": "id",
+  "use_whisper": true,
+  "model": "medium"
+}
+```
+
+Parameters:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| youtube_url | required | YouTube URL |
+| language | "id" | Language code |
+| use_whisper | false | false=YouTube (fast), true=Whisper (accurate) |
+| model | "medium" | Whisper model (hanya jika use_whisper=true) |
+| start_time | null | Optional start time |
+| end_time | null | Optional end time |
+
+Response:
+```json
+{
+  "video_id": "abc123",
+  "source": "youtube",
+  "transcript": {
+    "text": "Full text...",
+    "segments": [
+      {"start": 0.0, "end": 3.5, "text": "First sentence"}
+    ]
+  }
+}
+```
+
+> **Fallback**: Jika YouTube transcript tidak tersedia, otomatis menggunakan Whisper.
+
 ### GET /job/{job_id}
 Check status job.
 
