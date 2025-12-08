@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+*.env
+
+# Docker
+docker-compose.override.yml
+
+# Storage/Output (generated files)
+storage/
+*.mp4
+*.webm
+*.mkv
+*.m4a
+*.mp3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis/MinIO data (if mounted locally)
+redis-data/
+minio-data/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
