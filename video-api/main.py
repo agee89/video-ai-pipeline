@@ -213,6 +213,117 @@ async def get_job_status(job_id: str):
         "error": error.decode() if error else None
     }
 
+
+# ==================== THUMBNAIL FEATURE ====================
+
+class FrameSelection(BaseModel):
+    mode: str = "face_detection"  # face_detection, timestamp
+    timestamp: Optional[str] = None
+    prefer: str = "centered"  # centered, largest, most_active
+
+class BackgroundImage(BaseModel):
+    url: str
+    fit: str = "cover"  # cover, contain, fill
+
+class TextStyle(BaseModel):
+    font_family: str = "Montserrat"
+    font_weight: str = "bold"
+    font_size: int = 100
+    color: str = "#FFFFFF"
+    text_transform: Optional[str] = None  # uppercase, lowercase, capitalize
+    text_shadow: Optional[str] = None  # e.g. "2px 2px 4px #000000"
+    stroke_color: Optional[str] = None
+    stroke_width: int = 0
+    align: str = "center"
+    line_height: Optional[float] = None  # Multiplier e.g. 1.2 = 120% of font size
+    line_spacing: Optional[int] = None  # Pixel value (overrides line_height if set)
+    letter_spacing: Optional[int] = None  # Extra pixels between characters
+
+class TextBackground(BaseModel):
+    enabled: bool = True
+    color: str = "rgba(0, 0, 0, 0.7)"
+    padding: int = 40
+    radius: int = 20
+    full_width: bool = True
+    gradient: bool = False  # Enable gradient from bottom (solid) to top (transparent)
+    gradient_height: int = 0  # Custom height, 0 = auto (extends above text)
+
+class TextPosition(BaseModel):
+    x: str = "center"  # left, center, right, or pixel
+    y: str = "bottom"  # top, center, bottom, or pixel
+    margin_top: int = 0
+    margin_bottom: int = 250  # Higher default
+    margin_left: int = 0
+    margin_right: int = 0
+    edge_padding: int = 40  # Minimum padding from frame edges
+    max_lines: int = 3  # Maximum number of text lines (truncate with ... if exceeded)
+
+class TextOverlay(BaseModel):
+    text: str
+    style: Optional[TextStyle] = None
+    background: Optional[TextBackground] = None
+    position: Optional[TextPosition] = None
+
+class ExportSettings(BaseModel):
+    format: str = "png"  # png, jpg, webp
+    quality: int = 95
+
+class ThumbnailRequest(BaseModel):
+    video_url: Optional[str] = None
+    frame_selection: Optional[FrameSelection] = None
+    size: str = "1080x1920"
+    background_image: Optional[BackgroundImage] = None
+    text_overlay: TextOverlay
+    export: Optional[ExportSettings] = None
+    callback_url: Optional[str] = None
+
+class ThumbnailResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/generate_thumbnail", response_model=ThumbnailResponse)
+async def generate_thumbnail(request: ThumbnailRequest):
+    """Generate thumbnail from video with face detection and text overlay."""
+    
+    if not request.video_url and not request.background_image:
+        raise HTTPException(
+            status_code=400, 
+            detail="Either video_url or background_image is required"
+        )
+    
+    job_id = f"thumb_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "thumbnail",
+        "video_url": request.video_url,
+        "frame_selection": request.frame_selection.model_dump() if request.frame_selection else None,
+        "size": request.size,
+        "background_image": request.background_image.model_dump() if request.background_image else None,
+        "text_overlay": {
+            "text": request.text_overlay.text,
+            "style": (request.text_overlay.style.model_dump() if request.text_overlay.style 
+                     else TextStyle().model_dump()),
+            "background": (request.text_overlay.background.model_dump() if request.text_overlay.background 
+                          else TextBackground().model_dump()),
+            "position": (request.text_overlay.position.model_dump() if request.text_overlay.position 
+                        else TextPosition().model_dump()),
+        },
+        "export": (request.export.model_dump() if request.export 
+                  else ExportSettings().model_dump()),
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("thumbnail_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return ThumbnailResponse(
+        status="accepted",
+        job_id=job_id
+    )
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

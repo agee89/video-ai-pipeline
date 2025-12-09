@@ -144,7 +144,7 @@ def reframe_to_portrait_with_face_tracking(input_path: str, output_name: str, se
         tracked_face_bucket = None
         smooth_crop_x = None
         frames_since_face_seen = 0  # Count frames since tracked face was last seen
-        max_frames_without_face = 15  # After this many frames, reset and find new face
+        max_frames_without_face = 5  # After 5 frames (~0.2s), quickly find new face
         
         # Activity scores per face (by approximate X position bucket)
         # More buckets = finer tracking of individual faces

@@ -11,6 +11,7 @@ try:
     from modules.exporter import upload_to_storage
     from modules.callback import send_callback
     from modules.captioner import add_captions_to_video
+    from modules.thumbnail import generate_thumbnail
 except ImportError as e:
     logging.error(f"Failed to import modules: {e}")
     raise
@@ -322,11 +323,96 @@ def process_transcribe_job(job_data):
         redis_client.set(f"job:{job_id}:error", error_msg)
 
 
+def process_thumbnail_job(job_data):
+    """Process thumbnail generation job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing thumbnail job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        video_url = job_data.get("video_url")
+        background_image = job_data.get("background_image")
+        size = job_data.get("size", "1080x1920")
+        frame_selection = job_data.get("frame_selection")
+        text_overlay = job_data.get("text_overlay")
+        export_settings = job_data.get("export", {"format": "png"})
+        
+        video_path = None
+        
+        # Download video if needed
+        if video_url and not background_image:
+            # Convert external URL to internal Docker URL
+            internal_url = video_url.replace("minio-video", "minio")
+            logger.info(f"Downloading video: {internal_url}")
+            import requests
+            video_path = f"/app/output/{job_id}_source.mp4"
+            
+            response = requests.get(internal_url, stream=True, timeout=60)
+            response.raise_for_status()
+            with open(video_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info(f"Video downloaded: {video_path}")
+        
+        # Generate thumbnail
+        output_format = export_settings.get("format", "png")
+        output_path = f"/app/output/{job_id}_thumbnail.{output_format}"
+        
+        thumbnail_path = generate_thumbnail(
+            video_path=video_path,
+            output_path=output_path,
+            size=size,
+            frame_selection=frame_selection,
+            background_image=background_image,
+            text_overlay=text_overlay,
+            export_settings=export_settings
+        )
+        
+        logger.info(f"Thumbnail generated: {thumbnail_path}")
+        
+        # Upload to storage
+        filename = f"{job_id}.{output_format}"
+        upload_result = upload_to_storage(thumbnail_path, filename)
+        logger.info(f"Uploaded: {upload_result['url']}")
+        
+        # Cleanup
+        if video_path and os.path.exists(video_path):
+            os.remove(video_path)
+        if os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "thumbnail": {
+                "url": upload_result["url"],
+                "url_external": upload_result["url_external"],
+                "size": size,
+                "format": output_format
+            }
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+        
+        logger.info(f"Thumbnail job {job_id} completed")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error processing thumbnail job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:status", "failed")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
 def main():
     logger.info("Video Worker started")
     logger.info(f"Redis URL: {os.getenv('REDIS_URL')}")
     logger.info(f"Storage Endpoint: {os.getenv('STORAGE_ENDPOINT')}")
-    logger.info("Listening for video_jobs, caption_jobs, and transcribe_jobs...")
+    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, and thumbnail_jobs...")
     
     while True:
         try:
@@ -352,6 +438,14 @@ def main():
                 _, job_json = transcribe_result
                 job_data = json.loads(job_json)
                 process_transcribe_job(job_data)
+                continue
+            
+            # Check for thumbnail jobs
+            thumbnail_result = redis_client.brpop("thumbnail_jobs", timeout=1)
+            if thumbnail_result:
+                _, job_json = thumbnail_result
+                job_data = json.loads(job_json)
+                process_thumbnail_job(job_data)
                 continue
             
             # Small sleep if no jobs

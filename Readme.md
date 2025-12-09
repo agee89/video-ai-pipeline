@@ -72,30 +72,36 @@ curl -X POST http://host.docker.internal:8000/process_video \
 | `portrait` | bool | false | Convert to 9:16 portrait |
 | `face_tracking` | bool | false | Enable active speaker tracking |
 | `tracking_sensitivity` | int | 5 | 1-10 (1=stay longer, 10=switch faster) |
-| `camera_smoothing` | float | 0.15 | 0.05-0.5 (higher = faster camera movement) |
+| `camera_smoothing` | float | 0.25 | 0.05-0.5 (higher = faster camera movement) |
 
 ### Face Tracking Parameters Guide
 
 #### How Face Tracking Works
 
-1. **Initial Scan**: Sistem scan 15 frame pertama untuk menemukan wajah terbaik (ukuran × confidence)
+1. **Initial Scan**: Sistem scan ~1 detik pertama untuk menemukan wajah **PALING AKTIF** (bukan terbesar)
 2. **Hybrid Detection**: Face Detection (jarak jauh) + Face Mesh (lip tracking)
-3. **Priority**: Wajah terbesar & paling aktif (bicara + bergerak) mendapat prioritas
-4. **Fallback**: Jika tidak ada activity, otomatis fokus ke wajah terbesar
-5. **Dynamic Zoom**: Otomatis zoom-in 15% saat subject tertawa/terkejut (mulut terbuka lebar)
+3. **Lock Mode**: Saat fokus pada speaker aktif, kamera tetap terkunci dan zoom in
+4. **2-Person Dialog Mode**: Mode khusus untuk 2 orang + sensitivity tinggi (≥7) - switch lebih cepat
+5. **Lost Face Recovery**: Jika wajah hilang 0.5 detik, otomatis switch ke wajah yang terlihat
+6. **Dynamic Zoom**: Otomatis zoom-in hingga **25%** saat tertawa/terkejut/speaking aktif
+
+> Dokumentasi teknis lengkap: [FACE_TRACKING.md](./FACE_TRACKING.md)
 
 #### `tracking_sensitivity` (1-10)
 
-Mengontrol seberapa cepat kamera **berpindah antar orang** ketika mendeteksi speaker yang berbeda.
+Mengontrol seberapa cepat kamera **berpindah antar orang** dan berapa lama harus menunggu.
 
-| Value | Behavior | Best For |
-|-------|----------|----------|
-| 1-3 | Sangat stabil, jarang switch | 1 speaker utama, interview |
-| 4-6 | Balanced (default: 5) | Podcast 2 orang, dialog |
-| 7-8 | Responsif, cepat pindah | Talk show, diskusi grup |
-| 9-10 | Sangat agresif switching | Video dengan banyak speaker bergantian |
+| Value | Sustained Time | Cooldown | Mode | Best For |
+|-------|---------------|----------|------|----------|
+| 1-3 | 2.5-3.0s | 1.5-2.0s | Normal | 1 speaker, interview |
+| 4-6 | 1.5-2.0s | 1.0-1.5s | Normal | Podcast 2 orang |
+| 7-8 | 1.0-1.5s | 0.7-1.0s | **Dialog Mode** | Dialog 2 orang dinamis |
+| 9-10 | 0.5-1.0s | 0.5-0.7s | **Dialog Mode** | Talk show responsif |
 
-**Cara kerja**: Nilai rendah membutuhkan orang lain **jauh lebih aktif** (bicara + bergerak) sebelum kamera pindah. Nilai tinggi membuat kamera lebih mudah pindah ke siapapun yang terlihat aktif.
+**Dialog Mode (sensitivity ≥7 + 2 orang):**
+- Switch jika orang lain **2x lebih aktif**
+- Minimum stay **2.5 detik** setelah switch
+- Tidak "ragu-ragu" bolak-balik
 
 #### `camera_smoothing` (0.05-0.5)
 
@@ -104,21 +110,20 @@ Mengontrol **kecepatan pergerakan kamera** saat mengikuti wajah.
 | Value | Speed | Effect |
 |-------|-------|--------|
 | 0.05 | Sangat lambat | Sinematik, smooth, cocok untuk konten formal |
-| 0.10 | Lambat | Transisi halus |
-| 0.15 | Medium (default) | Balance antara smooth dan responsif |
-| 0.25 | Cepat | Tracking lebih ketat |
-| 0.35 | Sangat cepat | Hampir real-time tracking |
+| 0.15 | Lambat | Transisi halus |
+| 0.25 | Medium (default) | Balance antara smooth dan responsif |
+| 0.35 | Cepat | Tracking lebih ketat |
 | 0.50 | Instant | Mengikuti wajah tanpa delay |
 
 #### Rekomendasi Kombinasi
 
 | Skenario | sensitivity | smoothing | Catatan |
 |----------|-------------|-----------|---------|
-| Interview 1 orang | 2 | 0.10 | Fokus tetap, transisi halus |
-| Podcast 2 orang | 5 | 0.15 | Balanced switching |
-| Talk show / panel | 8 | 0.25 | Responsif multi-speaker |
-| Vlog / energik | 9 | 0.35 | Tracking ketat |
-| Wide shot 3-4 orang | 3 | 0.20 | Prioritas wajah terbesar |
+| Interview 1 orang | 3 | 0.15 | Fokus stabil, lock mode aktif |
+| Podcast 2 orang | 7 | 0.25 | Dialog mode, switch cepat |
+| Talk show / panel | 5 | 0.20 | Balanced untuk 3+ orang |
+| Dialog dinamis | 9 | 0.30 | Responsif 2-person |
+| Wide shot grup | 3 | 0.20 | Prioritas aktivitas |
 
 ```json
 // Contoh payload lengkap
@@ -267,7 +272,94 @@ curl -X POST http://host.docker.internal:8000/transcribe_youtube \
 
 ---
 
-## 4. Check Job Status
+## 4. Thumbnail Generator
+
+Generate thumbnail dari video dengan face detection dan text overlay.
+
+```bash
+curl -X POST http://host.docker.internal:8000/generate_thumbnail \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+    "size": "1080x1920",
+    "text_overlay": {
+      "text": "Cara Cepat Viral!",
+      "style": {
+        "font_family": "Montserrat",
+        "font_weight": "bold",
+        "font_size": 120,
+        "color": "#FFFFFF",
+        "text_transform": "uppercase",
+        "text_shadow": "3px 3px 5px #000000"
+      },
+      "background": {
+        "color": "rgba(0, 0, 0, 0.5)",
+        "padding": 40,
+        "radius": 20
+      },
+      "position": {
+        "y": "bottom",
+        "margin_bottom": 300,
+        "edge_padding": 80
+      }
+    },
+    "export": {
+      "format": "png"
+    }
+  }'
+```
+
+### Thumbnail Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_url` | string | optional | Video source for frame extraction |
+| `background_image.url` | string | optional | Override with static image |
+| `size` | string | "1080x1920" | Output size WxH |
+| `frame_selection.mode` | string | "face_detection" | face_detection / timestamp |
+| `frame_selection.prefer` | string | "centered" | centered / largest / most_active |
+
+### Text Style Options
+
+| Parameter | Example | Description |
+|-----------|---------|-------------|
+| `font_family` | "Montserrat" | Font name (supports fc-list fonts) |
+| `font_weight` | "bold" | bold / regular / light |
+| `font_size` | 120 | Font size in pixels |
+| `color` | "#FFFFFF" | Text color (hex/rgba) |
+| `text_transform` | "uppercase" | uppercase / lowercase / capitalize |
+| `text_shadow` | "3px 3px 5px #000" | Shadow: x y blur color |
+| `stroke_color` | "#000000" | Text outline color |
+| `stroke_width` | 2 | Outline width in pixels |
+| `line_height` | 1.2 | Multiplier (1.2 = 120% spacing) |
+| `line_spacing` | 30 | Pixel value (overrides line_height) |
+| `letter_spacing` | 5 | Extra pixels between characters |
+
+### Position Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `x` | "center" | left / center / right / pixel |
+| `y` | "bottom" | top / center / bottom / pixel |
+| `margin_bottom` | 250 | Distance from bottom |
+| `edge_padding` | 40 | Min padding from frame edges |
+| `max_lines` | 3 | Max lines (truncate with ...) |
+
+### Background Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | true | Enable background |
+| `gradient` | false | Enable gradient (solid bottom → transparent top) |
+| `gradient_height` | 0 | Custom gradient height (0 = auto) |
+| `color` | "rgba(0,0,0,0.7)" | Background color |
+| `padding` | 40 | Padding inside box |
+| `radius` | 20 | Corner radius (ignored if gradient) |
+| `full_width` | true | 100% width of thumbnail |
+
+---
+
+## 5. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -275,7 +367,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 5. Download Result
+## 6. Download Result
 
 ```bash
 # External access (browser)
@@ -299,11 +391,12 @@ curl -o clip.mp4 "http://localhost:9002/video-clips/{job_id}.mp4"
 
 ### Face Tracking
 - **Hybrid detection**: Face Detection + Face Mesh
-- **Multi-person support**: Tracks 2-4+ people in frame
-- **Activity tracking**: Lip movement + body movement detection
-- **Dynamic switching**: Sensitivity controls switch speed
-- **Smooth camera**: Configurable smoothing (0.05-0.5)
-- **Expression zoom**: Auto zoom-in saat tertawa/terkejut (max 15%)
+- **Initial Scan**: Lock ke wajah paling AKTIF (bukan terbesar)
+- **Lock Mode**: Tetap fokus pada speaker aktif + auto zoom
+- **2-Person Dialog Mode**: Switch cepat untuk sensitivity ≥7 + 2 orang  
+- **Lost Face Recovery**: Auto switch jika wajah hilang 0.5 detik
+- **Dynamic Zoom**: Hingga 25% saat tertawa/speaking aktif
+- **Smooth camera**: Configurable smoothing (default 0.25)
 
 ### Auto Caption
 - **Whisper AI**: Indonesian language support
@@ -311,6 +404,14 @@ curl -o clip.mp4 "http://localhost:9002/video-clips/{job_id}.mp4"
 - **Custom fonts**: Add your own .ttf files
 - **Adjustable position**: Via margin_v parameter
 - **Model cache**: Persisted across restarts
+
+### Thumbnail Generator
+- **Face Detection Frame**: Pilih frame terbaik dengan wajah menarik
+- **Text Overlay**: Multi-line text dengan auto wrapping
+- **Text Styling**: font, size, color, text_transform, text_shadow
+- **Background Box**: Rounded rectangle dengan transparency
+- **Edge Padding**: Configurable padding dari tepi frame
+- **Multi-format**: PNG, JPG, WebP export
 
 ### Video Processing
 - **Exact duration**: No extra buffer

@@ -76,13 +76,21 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
 | Parameter | Range | Default | Function |
 |-----------|-------|---------|----------|
 | `tracking_sensitivity` | 1-10 | 5 | Switch speed between speakers |
-| `camera_smoothing` | 0.05-0.5 | 0.15 | Camera movement speed |
+| `camera_smoothing` | 0.05-0.5 | 0.25 | Camera movement speed |
+
+**New Features:**
+- **Lock Mode**: Kamera terkunci pada speaker aktif + auto zoom
+- **2-Person Dialog Mode**: Mode cepat untuk sensitivity ≥7 + 2 orang
+- **Lost Face Recovery**: Auto switch jika wajah hilang 0.5 detik
+- **Dynamic Zoom**: Hingga 25% zoom saat tertawa/speaking
 
 **Recommended Combinations:**
-- Interview: `sensitivity=2, smoothing=0.10`
-- Podcast 2 orang: `sensitivity=5, smoothing=0.15`
-- Panel diskusi: `sensitivity=8, smoothing=0.25`
-- Multi-speaker energik: `sensitivity=9, smoothing=0.35`
+- Interview: `sensitivity=3, smoothing=0.15`
+- Podcast 2 orang: `sensitivity=7, smoothing=0.25`
+- Panel diskusi: `sensitivity=5, smoothing=0.20`
+- Dialog dinamis: `sensitivity=9, smoothing=0.30`
+
+> Detail: [FACE_TRACKING.md](./FACE_TRACKING.md)
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.
@@ -149,23 +157,88 @@ Response:
     "segments": [
       {"start": 0.0, "end": 3.5, "text": "First sentence"}
     ]
-  }
 }
 ```
 
 > **Fallback**: Jika YouTube transcript tidak tersedia, otomatis menggunakan Whisper.
+
+### POST /generate_thumbnail
+Generate thumbnail dengan face detection dan text overlay.
+
+```json
+{
+  "video_url": "http://video.mp4",
+  "size": "1080x1920",
+  "frame_selection": {
+    "mode": "face_detection",
+    "prefer": "centered"
+  },
+  "text_overlay": {
+    "text": "CARA CEPAT VIRAL!",
+    "style": {
+      "font_family": "Komika Axis",
+      "font_weight": "bold",
+      "font_size": 150,
+      "color": "#FFFC51",
+      "text_transform": "uppercase",
+      "text_shadow": "3px 3px 5px #000000",
+      "line_height": 1.2,
+      "letter_spacing": 3
+    },
+    "background": {
+      "color": "rgba(0, 0, 0, 0.5)",
+      "padding": 40,
+      "radius": 0,
+      "full_width": true
+    },
+    "position": {
+      "x": "center",
+      "y": "bottom",
+      "margin_bottom": 250,
+      "edge_padding": 40,
+      "max_lines": 4
+    }
+  },
+  "export": {
+    "format": "png"
+  }
+}
+```
+
+**Text Style Options:**
+| Parameter | Description |
+|-----------|-------------|
+| font_family | Font name (uses fc-list) |
+| font_size | Size in pixels |
+| text_transform | uppercase / lowercase / capitalize |
+| text_shadow | "x y blur color" format |
+| line_height | Multiplier (1.2 = 120%) |
+| line_spacing | Pixels (overrides line_height) |
+| letter_spacing | Extra pixels between chars |
+| stroke_color/width | Text outline |
+
+**Background Options:** enabled, gradient (solid bottom → transparent top), gradient_height, color, padding, radius, full_width
 
 ### GET /job/{job_id}
 Check status job.
 
 ## Key Modules
 
+### thumbnail.py - Thumbnail Generator
+- **Face Detection Frame**: Pilih frame terbaik dengan wajah menarik via fc-list
+- **Text Overlay**: Multi-line dengan auto wrapping + letter spacing
+- **Full Width Background**: 100% lebar dengan padding proporsional
+- **Font Metrics**: Actual text height untuk alignment sempurna
+- **Multi-format**: PNG, JPG, WebP export
+
 ### portrait.py - Face Tracking
 - **Hybrid approach**: Face Detection (wide shot) + Face Mesh (lip tracking)
-- **Multi-person support**: Tracks most active person (lip + body movement)
-- **Dynamic switching**: Sensitivity controls switch threshold (1-10)
-- **Smooth camera**: Configurable via `camera_smoothing` (0.05-0.5)
-- **Movement detection**: Detects body/head movement for activity scoring
+- **Initial Scan**: Lock ke wajah paling AKTIF (bukan terbesar)
+- **Lock Mode**: Tetap fokus pada speaker aktif + auto zoom
+- **2-Person Dialog Mode**: Switch cepat untuk sensitivity ≥7 + 2 orang
+- **Lost Face Recovery**: Auto switch jika wajah hilang 0.2 detik
+- **Dynamic Zoom**: Hingga 25% zoom saat tertawa/speaking aktif
+- **Smooth camera**: Configurable via `camera_smoothing` (default 0.25)
 
 ### captioner.py - Auto Caption
 - **Whisper models**: tiny, base, small, medium, large
