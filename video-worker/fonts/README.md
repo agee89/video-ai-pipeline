@@ -19,7 +19,7 @@ docker-compose up -d --build video-worker
 
 ### 3. Cek Nama Font yang Terinstall
 ```bash
-docker exec video_worker fc-list | grep -i "nama-font"
+docker exec video_worker fc-list | grep -i "Komika Axis"
 ```
 
 Contoh output:

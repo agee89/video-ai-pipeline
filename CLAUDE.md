@@ -41,12 +41,16 @@ video-ai-pipeline/
     ├── worker.py            # Job processor
     ├── requirements.txt
     ├── fonts/               # Custom fonts (.ttf)
+    │   ├── README.md
+    │   ├── KOMIKAX_.ttf
+    │   └── theboldfont.ttf
     └── modules/
-        ├── fetcher.py       # YouTube download
-        ├── portrait.py      # Face tracking
-        ├── captioner.py     # Whisper + subtitles
+        ├── fetcher.py       # YouTube download + partial download
+        ├── portrait.py      # Face tracking + active speaker
+        ├── captioner.py     # Whisper + ASS subtitles
+        ├── cutter.py        # Video segment cutting
         ├── exporter.py      # MinIO upload
-        └── callback.py      # Webhook
+        └── callback.py      # Webhook notifications
 ```
 
 ## API Endpoints
@@ -62,9 +66,23 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
   "portrait": true,
   "face_tracking": true,
   "tracking_sensitivity": 5,
+  "camera_smoothing": 0.15,
   "callback_url": "https://webhook.example.com"
 }
 ```
+
+**Face Tracking Parameters:**
+
+| Parameter | Range | Default | Function |
+|-----------|-------|---------|----------|
+| `tracking_sensitivity` | 1-10 | 5 | Switch speed between speakers |
+| `camera_smoothing` | 0.05-0.5 | 0.15 | Camera movement speed |
+
+**Recommended Combinations:**
+- Interview: `sensitivity=2, smoothing=0.10`
+- Podcast 2 orang: `sensitivity=5, smoothing=0.15`
+- Panel diskusi: `sensitivity=8, smoothing=0.25`
+- Multi-speaker energik: `sensitivity=9, smoothing=0.35`
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.
@@ -144,9 +162,10 @@ Check status job.
 
 ### portrait.py - Face Tracking
 - **Hybrid approach**: Face Detection (wide shot) + Face Mesh (lip tracking)
-- **Activity-based tracking**: Follows most active person
-- **Smooth camera**: Configurable smoothing factor
-- **Detection rate**: >80% for most videos
+- **Multi-person support**: Tracks most active person (lip + body movement)
+- **Dynamic switching**: Sensitivity controls switch threshold (1-10)
+- **Smooth camera**: Configurable via `camera_smoothing` (0.05-0.5)
+- **Movement detection**: Detects body/head movement for activity scoring
 
 ### captioner.py - Auto Caption
 - **Whisper models**: tiny, base, small, medium, large
@@ -209,6 +228,31 @@ docker ps -a | grep video
 
 # Stop all
 docker-compose down
+```
+
+## Git Commands
+
+```bash
+# Check status
+git status
+
+# Add all changes
+git add .
+
+# Commit with message
+git commit -m "Deskripsi perubahan"
+
+# Push to remote
+git push
+
+# One-liner: add, commit, push
+git add . && git commit -m "Deskripsi perubahan" && git push
+
+# Pull latest changes
+git pull
+
+# View commit history
+git log --oneline -10
 ```
 
 ## Whisper Models

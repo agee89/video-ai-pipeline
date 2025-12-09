@@ -30,6 +30,7 @@ class ProcessVideoRequest(BaseModel):
     portrait: bool = False
     face_tracking: bool = False
     tracking_sensitivity: int = 5  # 1-10: 1=slow smooth, 10=fast responsive
+    camera_smoothing: float = 0.25  # 0.05-0.5: Higher = faster camera movement
     callback_url: Optional[str] = None
     
     @field_validator('start_time', 'end_time')
@@ -62,6 +63,7 @@ async def process_video(request: ProcessVideoRequest):
         "portrait": request.portrait,
         "face_tracking": request.face_tracking,
         "tracking_sensitivity": min(10, max(1, request.tracking_sensitivity)),
+        "camera_smoothing": min(0.5, max(0.05, request.camera_smoothing)),
         "callback_url": request.callback_url,
         "status": "pending"
     }

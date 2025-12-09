@@ -49,8 +49,9 @@ def process_video_job(job_data):
         if job_data.get("portrait", False):
             if job_data.get("face_tracking", False):
                 sensitivity = job_data.get("tracking_sensitivity", 5)
-                logger.info(f"Step 2: Converting to portrait with face tracking (sensitivity={sensitivity})...")
-                clip_path = reframe_to_portrait_with_face_tracking(clip_path, f"{job_id}_portrait", sensitivity)
+                camera_smoothing = job_data.get("camera_smoothing", 0.15)
+                logger.info(f"Step 2: Converting to portrait with face tracking (sensitivity={sensitivity}, smoothing={camera_smoothing})...")
+                clip_path = reframe_to_portrait_with_face_tracking(clip_path, f"{job_id}_portrait", sensitivity, camera_smoothing)
             else:
                 logger.info("Step 2: Converting to portrait (center crop)...")
                 clip_path = reframe_to_portrait(clip_path, f"{job_id}_portrait")
