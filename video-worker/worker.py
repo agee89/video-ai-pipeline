@@ -4,6 +4,7 @@ import os
 import time
 import logging
 import traceback
+import sys
 
 try:
     from modules.fetcher import download_video
@@ -15,11 +16,70 @@ try:
     from modules.video_source import add_video_source_to_video
     from modules.image_watermark import add_image_watermark_to_video
     from modules.video_merge import merge_videos
+    from modules.image_to_video import create_video_from_images
 except ImportError as e:
     logging.error(f"Failed to import modules: {e}")
     raise
 
-logging.basicConfig(level=logging.INFO)
+
+# ==================== IMPROVED LOGGING ====================
+
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with colors and better formatting"""
+    
+    COLORS = {
+        'DEBUG': '\033[36m',     # Cyan
+        'INFO': '\033[32m',      # Green
+        'WARNING': '\033[33m',   # Yellow
+        'ERROR': '\033[31m',     # Red
+        'CRITICAL': '\033[35m',  # Magenta
+    }
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    def format(self, record):
+        # Add color based on level
+        color = self.COLORS.get(record.levelname, self.RESET)
+        
+        # Format timestamp
+        timestamp = self.formatTime(record, '%Y-%m-%d %H:%M:%S')
+        
+        # Format the message
+        level = f"{color}{record.levelname:8}{self.RESET}"
+        module = f"\033[34m{record.name:20}\033[0m"
+        message = record.getMessage()
+        
+        # Add job_id if present in extra
+        job_id = getattr(record, 'job_id', None)
+        if job_id:
+            return f"{timestamp} | {level} | {self.BOLD}[{job_id}]{self.RESET} | {message}"
+        else:
+            return f"{timestamp} | {level} | {module} | {message}"
+
+
+def setup_logging():
+    """Setup improved logging configuration"""
+    # Create handler
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    
+    # Set formatter
+    formatter = ColoredFormatter()
+    handler.setFormatter(formatter)
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers = []  # Remove default handlers
+    root_logger.addHandler(handler)
+    
+    # Reduce noise from other libraries
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -601,11 +661,76 @@ def process_merge_videos_job(job_data):
         redis_client.set(f"job:{job_id}:error", error_msg)
 
 
+def process_image_to_video_job(job_data):
+    """Process image to video job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing image to video job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        images = job_data["images"]
+        fps = job_data.get("fps", 30)
+        transition = job_data.get("transition")
+        motion = job_data.get("motion")
+        motion_intensity = job_data.get("motion_intensity", 0.3)
+        
+        logger.info(f"Creating video from {len(images)} image(s)")
+        logger.info(f"FPS: {fps}, Transition: {transition or 'none'}, Motion: {motion or 'none'} (intensity: {motion_intensity})")
+        
+        # Process image to video
+        result_data = create_video_from_images(
+            images=images,
+            job_id=job_id,
+            fps=fps,
+            transition=transition,
+            motion=motion,
+            motion_intensity=motion_intensity
+        )
+        
+        # Upload video
+        logger.info("Uploading video...")
+        upload_result = upload_to_storage(result_data["output_path"], f"{job_id}.mp4")
+        logger.info(f"Uploaded - n8n: {upload_result['url']}, External: {upload_result['url_external']}")
+        
+        # Cleanup local file
+        if os.path.exists(result_data["output_path"]):
+            os.remove(result_data["output_path"])
+            logger.info(f"Deleted: {result_data['output_path']}")
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "video": {
+                "url": upload_result['url'],
+                "url_external": upload_result['url_external']
+            },
+            "details": {
+                "image_count": result_data.get("image_count"),
+                "transition": result_data.get("transition")
+            }
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+        
+        logger.info(f"Image to video job {job_id} completed successfully")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error processing image to video job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:status", "failed")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
 def main():
     logger.info("Video Worker started")
     logger.info(f"Redis URL: {os.getenv('REDIS_URL')}")
     logger.info(f"Storage Endpoint: {os.getenv('STORAGE_ENDPOINT')}")
-    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, thumbnail_jobs, video_source_jobs, image_watermark_jobs, and merge_videos_jobs...")
+    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, thumbnail_jobs, video_source_jobs, image_watermark_jobs, merge_videos_jobs, and image_to_video_jobs...")
     
     while True:
         try:
@@ -663,6 +788,14 @@ def main():
                 _, job_json = merge_videos_result
                 job_data = json.loads(job_json)
                 process_merge_videos_job(job_data)
+                continue
+            
+            # Check for image to video jobs
+            image_to_video_result = redis_client.brpop("image_to_video_jobs", timeout=1)
+            if image_to_video_result:
+                _, job_json = image_to_video_result
+                job_data = json.loads(job_json)
+                process_image_to_video_job(job_data)
                 continue
             
             # Small sleep if no jobs

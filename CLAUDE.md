@@ -54,7 +54,8 @@ video-ai-pipeline/
         ├── thumbnail.py     # Thumbnail generator
         ├── video_source.py  # Video source overlay
         ├── image_watermark.py # Image watermark overlay
-        └── video_merge.py   # Video concatenation
+        ├── video_merge.py   # Video concatenation
+        └── image_to_video.py # Image to video converter
 ```
 
 ## API Endpoints
@@ -178,6 +179,31 @@ Gabungkan beberapa video menjadi satu.
 ```
 
 Video akan digabung secara berurutan (video1 → video2 → ...).
+
+### POST /image_to_video
+Buat video dari gambar.
+
+```json
+{
+  "images": [
+    { "image_url": "http://minio-video:9002/images/1.jpg", "duration": 3 },
+    { "image_url": "http://minio-video:9002/images/2.jpg", "duration": 3 }
+  ],
+  "fps": 30,
+  "transition": "wipeleft",
+  "motion": "zoom_in",
+  "motion_intensity": 0.3
+}
+```
+
+**Parameters:**
+- `images[].duration`: Seconds per image (default: 3.0)
+- `fps`: Frames per second (default: 30)
+- `transition`: Transisi antar gambar
+  - `fade`, `wipeleft`, `wiperight`, `slideleft`, `slideright`, `slideup`, `slidedown`, `radial`, `circleopen`, `circleclose`
+- `motion`: Ken Burns effect
+  - `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `zoom_in_pan_right`, `zoom_in_pan_left`
+- `motion_intensity`: Intensitas zoom/pan 0.1-1.0 (default: 0.3)
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.
@@ -349,6 +375,11 @@ Check status job.
 - **FFmpeg concat**: Concatenate multiple videos
 - **Stream copy**: Fast processing when codecs match
 - **Re-encoding fallback**: Auto re-encode if stream copy fails
+
+### image_to_video.py - Image to Video
+- **FFmpeg slideshow**: Create video from images
+- **Fade transitions**: Optional xfade effects
+- **Portrait output**: 1080x1920 resolution
 
 ## Docker Volumes
 

@@ -33,7 +33,8 @@ video-ai-pipeline/
         ├── thumbnail.py     # Thumbnail generator
         ├── video_source.py  # Video source overlay
         ├── image_watermark.py # Image watermark overlay
-        └── video_merge.py   # Video concatenation
+        ├── video_merge.py   # Video concatenation
+        └── image_to_video.py # Image to video converter
 ```
 
 ---
@@ -470,7 +471,65 @@ Video akan digabung secara berurutan.
 
 ---
 
-## 8. Check Job Status
+## 8. Image to Video
+
+Buat video dari gambar (single atau slideshow).
+
+```bash
+curl -X POST http://host.docker.internal:8000/image_to_video \
+  -H "Content-Type: application/json" \
+  -d '{
+    "images": [
+      { "image_url": "http://minio-video:9002/images/1.jpg", "duration": 3 },
+      { "image_url": "http://minio-video:9002/images/2.jpg", "duration": 3 }
+    ],
+    "transition": "fade"
+  }'
+```
+
+### Image to Video Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `images` | array | required | List of image objects |
+| `images[].image_url` | string | required | URL of image |
+| `images[].duration` | float | 3.0 | Seconds to show image |
+| `fps` | int | 30 | Frames per second |
+| `transition` | string | null | Transition effect |
+| `motion` | string | null | Motion/Ken Burns effect |
+| `motion_intensity` | float | 0.3 | Intensitas motion (0.1-1.0) |
+
+### Transition Options
+
+| Transition | Description |
+|------------|-------------|
+| `fade` | Fade dissolve |
+| `wipeleft` | Wipe ke kiri |
+| `wiperight` | Wipe ke kanan |
+| `slideleft` | Slide ke kiri |
+| `slideright` | Slide ke kanan |
+| `slideup` | Slide ke atas |
+| `slidedown` | Slide ke bawah |
+| `radial` | Radial sweep |
+| `circleopen` | Circle open |
+| `circleclose` | Circle close |
+
+### Motion Options (Ken Burns Effect)
+
+| Motion | Description |
+|--------|-------------|
+| `zoom_in` | Zoom in dari tengah |
+| `zoom_out` | Zoom out dari tengah |
+| `pan_left` | Pan dari kanan ke kiri |
+| `pan_right` | Pan dari kiri ke kanan |
+| `pan_up` | Pan dari bawah ke atas |
+| `pan_down` | Pan dari atas ke bawah |
+| `zoom_in_pan_right` | Zoom + pan kanan |
+| `zoom_in_pan_left` | Zoom + pan kiri |
+
+---
+
+## 9. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -478,7 +537,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 9. Download Result
+## 10. Download Result
 
 ```bash
 # External access (browser)

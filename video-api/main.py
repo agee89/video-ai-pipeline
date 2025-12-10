@@ -512,3 +512,60 @@ async def merge_videos(request: MergeVideosRequest):
         status="accepted",
         job_id=job_id
     )
+
+
+# ==================== IMAGE TO VIDEO FEATURE ====================
+
+class ImageInputItem(BaseModel):
+    """Single image input for video creation"""
+    image_url: str
+    duration: float = 3.0  # Seconds to show this image
+
+class ImageToVideoRequest(BaseModel):
+    """Request to create video from images"""
+    images: List[ImageInputItem]
+    fps: int = 30
+    transition: Optional[str] = None  # fade, wipeleft, slideright, etc
+    motion: Optional[str] = None  # zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down
+    motion_intensity: float = 0.3  # 0.1 (subtle) to 1.0 (strong), default 0.3 = 30% zoom
+    callback_url: Optional[str] = None
+
+class ImageToVideoResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/image_to_video", response_model=ImageToVideoResponse)
+async def image_to_video(request: ImageToVideoRequest):
+    """
+    Create video from images
+    
+    - images: List of images with duration (seconds)
+    - fps: Frames per second (default 30)
+    - transition: Optional transition effect (fade, wipeleft, etc)
+    - motion: Optional motion effect (zoom_in, zoom_out, pan_left, pan_right)
+    - motion_intensity: Zoom/pan intensity 0.1-1.0 (default 0.3)
+    """
+    if len(request.images) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 image is required")
+    
+    job_id = f"img2vid_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "image_to_video",
+        "images": [{"image_url": img.image_url, "duration": img.duration} for img in request.images],
+        "fps": request.fps,
+        "transition": request.transition,
+        "motion": request.motion,
+        "motion_intensity": request.motion_intensity,
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("image_to_video_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return ImageToVideoResponse(
+        status="accepted",
+        job_id=job_id
+    )
