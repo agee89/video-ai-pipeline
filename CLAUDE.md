@@ -52,7 +52,9 @@ video-ai-pipeline/
         ├── exporter.py      # MinIO upload
         ├── callback.py      # Webhook notifications
         ├── thumbnail.py     # Thumbnail generator
-        └── video_source.py  # Video source overlay
+        ├── video_source.py  # Video source overlay
+        ├── image_watermark.py # Image watermark overlay
+        └── video_merge.py   # Video concatenation
 ```
 
 ## API Endpoints
@@ -131,6 +133,51 @@ Tambahkan text overlay sumber video (channel name) pada video.
 }
 ```
 Output: Video dengan text "FullVideo: MyYoutube Channel" di pojok kanan bawah.
+
+### POST /add_image_watermark
+Tambahkan watermark gambar (logo) pada video.
+
+```json
+{
+  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+  "image_url": "http://minio-video:9002/logos/logo.png",
+  "size": {
+    "scale": 0.3
+  },
+  "position": {
+    "position": "bottom_right",
+    "margin_x": 20,
+    "margin_y": 20
+  },
+  "opacity": 0.8
+}
+```
+
+**Size Options:** `width`, `height`, `scale` (e.g. 0.3 = 30%)
+
+**Position Options:** `top_left`, `top_center`, `top_right`, `center`, `bottom_left`, `bottom_center`, `bottom_right`
+
+**Minimal Request:**
+```json
+{
+  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+  "image_url": "http://minio-video:9002/logos/logo.png"
+}
+```
+
+### POST /merge_videos
+Gabungkan beberapa video menjadi satu.
+
+```json
+{
+  "videos": [
+    { "video_url": "http://minio:9000/bucket/video1.mp4" },
+    { "video_url": "http://minio-video:9002/video-clips/video2.mp4" }
+  ]
+}
+```
+
+Video akan digabung secara berurutan (video1 → video2 → ...).
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.
@@ -291,6 +338,17 @@ Check status job.
 - **Flexible positioning**: 9 posisi (top_left, bottom_right, etc.)
 - **URL conversion**: Auto-convert minio:9000/localhost:9000 → minio-nca:9000
 - **Styling options**: Font, size, color, background transparency
+
+### image_watermark.py - Image Watermark
+- **FFmpeg overlay**: Image overlay dengan alpha support
+- **Resize options**: width, height, atau scale factor
+- **7 positions**: top_left, top_center, top_right, center, bottom_left, bottom_center, bottom_right
+- **Opacity control**: 0.0 - 1.0 transparency
+
+### video_merge.py - Video Merge
+- **FFmpeg concat**: Concatenate multiple videos
+- **Stream copy**: Fast processing when codecs match
+- **Re-encoding fallback**: Auto re-encode if stream copy fails
 
 ## Docker Volumes
 

@@ -31,7 +31,9 @@ video-ai-pipeline/
         ├── exporter.py      # MinIO upload
         ├── callback.py      # Webhook notifications
         ├── thumbnail.py     # Thumbnail generator
-        └── video_source.py  # Video source overlay
+        ├── video_source.py  # Video source overlay
+        ├── image_watermark.py # Image watermark overlay
+        └── video_merge.py   # Video concatenation
 ```
 
 ---
@@ -405,7 +407,70 @@ Output: Video dengan text **"FullVideo: MyYoutube Channel"** di pojok kanan bawa
 
 ---
 
-## 6. Check Job Status
+## 6. Image Watermark
+
+Tambahkan watermark gambar (logo, PNG dengan transparansi) pada video.
+
+```bash
+curl -X POST http://host.docker.internal:8000/add_image_watermark \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+    "image_url": "http://minio-video:9002/logos/logo.png",
+    "size": { "scale": 0.3 },
+    "position": { "position": "bottom_right" },
+    "opacity": 0.8
+  }'
+```
+
+### Image Watermark Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_url` | string | required | URL of video source |
+| `image_url` | string | required | URL of watermark image (PNG) |
+| `size.width` | int | null | Target width in pixels |
+| `size.height` | int | null | Target height in pixels |
+| `size.scale` | float | null | Scale factor (0.3 = 30%) |
+| `position.position` | string | "bottom_right" | Position on video |
+| `position.margin_x` | int | 30 | Horizontal margin |
+| `position.margin_y` | int | 30 | Vertical margin |
+| `opacity` | float | 1.0 | Transparency (0.0 - 1.0) |
+
+### Position Options
+
+| Position | Description |
+|----------|-------------|
+| `top_left` | Kiri atas |
+| `top_center` | Tengah atas |
+| `top_right` | Kanan atas |
+| `center` | Tengah |
+| `bottom_left` | Kiri bawah |
+| `bottom_center` | Tengah bawah |
+| `bottom_right` | Kanan bawah (default) |
+
+---
+
+## 7. Merge Videos
+
+Gabungkan beberapa video menjadi satu.
+
+```bash
+curl -X POST http://host.docker.internal:8000/merge_videos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "videos": [
+      { "video_url": "http://minio-video:9002/video-clips/video1.mp4" },
+      { "video_url": "http://minio-video:9002/video-clips/video2.mp4" }
+    ]
+  }'
+```
+
+Video akan digabung secara berurutan.
+
+---
+
+## 8. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -413,7 +478,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 7. Download Result
+## 9. Download Result
 
 ```bash
 # External access (browser)

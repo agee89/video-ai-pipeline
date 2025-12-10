@@ -13,6 +13,8 @@ try:
     from modules.captioner import add_captions_to_video
     from modules.thumbnail import generate_thumbnail
     from modules.video_source import add_video_source_to_video
+    from modules.image_watermark import add_image_watermark_to_video
+    from modules.video_merge import merge_videos
 except ImportError as e:
     logging.error(f"Failed to import modules: {e}")
     raise
@@ -476,11 +478,134 @@ def process_video_source_job(job_data):
         redis_client.set(f"job:{job_id}:error", error_msg)
 
 
+def process_image_watermark_job(job_data):
+    """Process image watermark job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing image watermark job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        video_url = job_data["video_url"]
+        image_url = job_data["image_url"]
+        size = job_data.get("size", {})
+        position = job_data.get("position", {})
+        opacity = job_data.get("opacity", 1.0)
+        
+        logger.info(f"Video URL: {video_url}")
+        logger.info(f"Image URL: {image_url}")
+        logger.info(f"Position: {position.get('position', 'bottom_right')}, Opacity: {opacity}")
+        
+        # Process image watermark
+        result_data = add_image_watermark_to_video(
+            video_url=video_url,
+            image_url=image_url,
+            job_id=job_id,
+            size=size,
+            position=position,
+            opacity=opacity
+        )
+        
+        # Upload to storage
+        logger.info("Uploading video with image watermark...")
+        upload_result = upload_to_storage(result_data["output_path"], f"{job_id}.mp4")
+        logger.info(f"Uploaded - n8n: {upload_result['url']}, External: {upload_result['url_external']}")
+        
+        # Cleanup local file
+        if os.path.exists(result_data["output_path"]):
+            os.remove(result_data["output_path"])
+            logger.info(f"Deleted: {result_data['output_path']}")
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "video": {
+                "url": upload_result['url'],
+                "url_external": upload_result['url_external']
+            },
+            "watermark": {
+                "position": result_data.get("position"),
+                "opacity": result_data.get("opacity")
+            }
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+        
+        logger.info(f"Image watermark job {job_id} completed successfully")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error processing image watermark job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:status", "failed")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
+def process_merge_videos_job(job_data):
+    """Process video merge job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing merge videos job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        video_urls = job_data["videos"]
+        
+        logger.info(f"Merging {len(video_urls)} videos")
+        for i, url in enumerate(video_urls):
+            logger.info(f"  Video {i+1}: {url}")
+        
+        # Process merge
+        result_data = merge_videos(
+            video_urls=video_urls,
+            job_id=job_id
+        )
+        
+        # Upload merged video
+        logger.info("Uploading merged video...")
+        upload_result = upload_to_storage(result_data["output_path"], f"{job_id}.mp4")
+        logger.info(f"Uploaded - n8n: {upload_result['url']}, External: {upload_result['url_external']}")
+        
+        # Cleanup local file
+        if os.path.exists(result_data["output_path"]):
+            os.remove(result_data["output_path"])
+            logger.info(f"Deleted: {result_data['output_path']}")
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "video": {
+                "url": upload_result['url'],
+                "url_external": upload_result['url_external']
+            },
+            "merged": {
+                "video_count": result_data.get("video_count")
+            }
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+        
+        logger.info(f"Merge videos job {job_id} completed successfully")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error processing merge videos job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:status", "failed")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
 def main():
     logger.info("Video Worker started")
     logger.info(f"Redis URL: {os.getenv('REDIS_URL')}")
     logger.info(f"Storage Endpoint: {os.getenv('STORAGE_ENDPOINT')}")
-    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, thumbnail_jobs, and video_source_jobs...")
+    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, thumbnail_jobs, video_source_jobs, image_watermark_jobs, and merge_videos_jobs...")
     
     while True:
         try:
@@ -522,6 +647,22 @@ def main():
                 _, job_json = video_source_result
                 job_data = json.loads(job_json)
                 process_video_source_job(job_data)
+                continue
+            
+            # Check for image watermark jobs
+            image_watermark_result = redis_client.brpop("image_watermark_jobs", timeout=1)
+            if image_watermark_result:
+                _, job_json = image_watermark_result
+                job_data = json.loads(job_json)
+                process_image_watermark_job(job_data)
+                continue
+            
+            # Check for merge videos jobs
+            merge_videos_result = redis_client.brpop("merge_videos_jobs", timeout=1)
+            if merge_videos_result:
+                _, job_json = merge_videos_result
+                job_data = json.loads(job_json)
+                process_merge_videos_job(job_data)
                 continue
             
             # Small sleep if no jobs

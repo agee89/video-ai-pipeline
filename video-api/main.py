@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import uuid
 import redis
 import json
@@ -403,6 +403,112 @@ async def add_video_source(request: AddVideoSourceRequest):
     redis_client.set(f"job:{job_id}:status", "pending")
     
     return AddVideoSourceResponse(
+        status="accepted",
+        job_id=job_id
+    )
+
+
+# ==================== IMAGE WATERMARK FEATURE ====================
+
+class ImageWatermarkSize(BaseModel):
+    """Size options for watermark image"""
+    width: Optional[int] = None   # Target width in pixels
+    height: Optional[int] = None  # Target height in pixels
+    scale: Optional[float] = None # Scale factor (e.g. 0.5 = 50%)
+
+class ImageWatermarkPosition(BaseModel):
+    """Position options for watermark"""
+    position: str = "bottom_right"  # top_left, top_center, top_right, center, bottom_left, bottom_center, bottom_right
+    margin_x: int = 30
+    margin_y: int = 30
+
+class AddImageWatermarkRequest(BaseModel):
+    """Request to add image watermark to a video"""
+    video_url: str
+    image_url: str  # URL of watermark image (PNG recommended for transparency)
+    size: Optional[ImageWatermarkSize] = None
+    position: Optional[ImageWatermarkPosition] = None
+    opacity: float = 1.0  # 0.0 - 1.0
+    callback_url: Optional[str] = None
+
+class AddImageWatermarkResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/add_image_watermark", response_model=AddImageWatermarkResponse)
+async def add_image_watermark(request: AddImageWatermarkRequest):
+    """
+    Add image watermark to a video
+    
+    - video_url: URL of the source video
+    - image_url: URL of watermark image (PNG with transparency recommended)
+    - size: Resize options (width, height, or scale)
+    - position: Position on video (7 options available)
+    - opacity: Transparency level (0.0 - 1.0)
+    """
+    job_id = f"imgwm_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "image_watermark",
+        "video_url": request.video_url,
+        "image_url": request.image_url,
+        "size": request.size.model_dump() if request.size else {},
+        "position": request.position.model_dump() if request.position else ImageWatermarkPosition().model_dump(),
+        "opacity": min(1.0, max(0.0, request.opacity)),
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("image_watermark_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return AddImageWatermarkResponse(
+        status="accepted",
+        job_id=job_id
+    )
+
+
+# ==================== VIDEO MERGE FEATURE ====================
+
+class VideoInput(BaseModel):
+    """Single video input for merge"""
+    video_url: str
+
+class MergeVideosRequest(BaseModel):
+    """Request to merge multiple videos"""
+    videos: List[VideoInput]  # List of videos to merge (in order)
+    callback_url: Optional[str] = None
+
+class MergeVideosResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/merge_videos", response_model=MergeVideosResponse)
+async def merge_videos(request: MergeVideosRequest):
+    """
+    Merge multiple videos into one
+    
+    - videos: List of video URLs to merge (in order)
+    - Videos will be concatenated sequentially
+    """
+    if len(request.videos) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 videos are required to merge")
+    
+    job_id = f"merge_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "merge_videos",
+        "videos": [v.video_url for v in request.videos],
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("merge_videos_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return MergeVideosResponse(
         status="accepted",
         job_id=job_id
     )
