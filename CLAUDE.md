@@ -50,7 +50,9 @@ video-ai-pipeline/
         ├── captioner.py     # Whisper + ASS subtitles
         ├── cutter.py        # Video segment cutting
         ├── exporter.py      # MinIO upload
-        └── callback.py      # Webhook notifications
+        ├── callback.py      # Webhook notifications
+        ├── thumbnail.py     # Thumbnail generator
+        └── video_source.py  # Video source overlay
 ```
 
 ## API Endpoints
@@ -91,6 +93,44 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
 - Dialog dinamis: `sensitivity=9, smoothing=0.30`
 
 > Detail: [FACE_TRACKING.md](./FACE_TRACKING.md)
+
+### POST /add_video_source
+Tambahkan text overlay sumber video (channel name) pada video.
+
+```json
+{
+  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+  "channel_name": "MyYoutube Channel",
+  "prefix": "FullVideo:",
+  "text_style": {
+    "font_family": "Montserrat",
+    "font_size": 40,
+    "color": "#FFFFFF",
+    "bold": true
+  },
+  "background": {
+    "enabled": true,
+    "color": "rgba(0, 0, 0, 0.5)",
+    "padding": 20
+  },
+  "position": {
+    "position": "bottom_right",
+    "margin_x": 30,
+    "margin_y": 30
+  }
+}
+```
+
+**Position Options:** `top_left`, `top_right`, `bottom_left`, `bottom_right` (default)
+
+**Minimal Request:**
+```json
+{
+  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+  "channel_name": "MyYoutube Channel"
+}
+```
+Output: Video dengan text "FullVideo: MyYoutube Channel" di pojok kanan bawah.
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.
@@ -246,6 +286,12 @@ Check status job.
 - **ASS subtitles**: Rich styling support
 - **Model cache**: Persisted in Docker volume
 
+### video_source.py - Video Source Overlay
+- **FFmpeg drawtext**: Text overlay dengan background box
+- **Flexible positioning**: 9 posisi (top_left, bottom_right, etc.)
+- **URL conversion**: Auto-convert minio:9000/localhost:9000 → minio-nca:9000
+- **Styling options**: Font, size, color, background transparency
+
 ## Docker Volumes
 
 | Volume | Purpose |
@@ -277,6 +323,9 @@ Check status job.
 | video-worker | `http://minio:9002/video-clips/...` |
 | n8n | `http://minio-video:9002/video-clips/...` |
 | API | `http://host.docker.internal:8000/...` |
+| External MinIO (NCAT) | `http://minio-nca:9000/...` |
+
+> **Note**: URL dari NCAT toolkit (`minio:9000` atau `localhost:9000`) otomatis dikonversi ke `minio-nca:9000` oleh video_source.py
 
 ## Custom Fonts
 
@@ -371,3 +420,8 @@ git log --oneline -10
 - Ensure .ttf file is in fonts/
 - Rebuild container
 - Check font name matches exactly
+
+### Video source external MinIO error
+- Pastikan external MinIO memiliki alias `minio-nca` di network
+- Video URL akan auto-convert: `minio:9000` → `minio-nca:9000`
+- Cek network connectivity: `docker exec video_worker python3 -c "import requests; r = requests.get('http://minio-nca:9000'); print(r.status_code)"`

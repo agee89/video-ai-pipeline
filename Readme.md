@@ -29,7 +29,9 @@ video-ai-pipeline/
         ├── captioner.py     # Whisper + ASS subtitles
         ├── cutter.py        # Video segment cutting
         ├── exporter.py      # MinIO upload
-        └── callback.py      # Webhook notifications
+        ├── callback.py      # Webhook notifications
+        ├── thumbnail.py     # Thumbnail generator
+        └── video_source.py  # Video source overlay
 ```
 
 ---
@@ -359,7 +361,51 @@ curl -X POST http://host.docker.internal:8000/generate_thumbnail \
 
 ---
 
-## 5. Check Job Status
+## 5. Video Source Overlay
+
+Tambahkan text overlay sumber video (channel name) pada video.
+
+```bash
+curl -X POST http://host.docker.internal:8000/add_video_source \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
+    "channel_name": "MyYoutube Channel"
+  }'
+```
+
+Output: Video dengan text **"FullVideo: MyYoutube Channel"** di pojok kanan bawah.
+
+### Video Source Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_url` | string | required | URL of video source |
+| `channel_name` | string | required | Channel name to display |
+| `prefix` | string | "FullVideo:" | Text before channel name |
+| `text_style.font_family` | string | "Montserrat" | Font name |
+| `text_style.font_size` | int | 40 | Font size in pixels |
+| `text_style.color` | string | "#FFFFFF" | Text color |
+| `text_style.bold` | bool | true | Bold text |
+| `background.enabled` | bool | true | Enable background box |
+| `background.color` | string | "rgba(0,0,0,0.5)" | Background color |
+| `background.padding` | int | 20 | Box padding |
+| `position.position` | string | "bottom_right" | Position on video |
+| `position.margin_x` | int | 30 | Horizontal margin |
+| `position.margin_y` | int | 30 | Vertical margin |
+
+### Position Options
+
+| Position | Description |
+|----------|-------------|
+| `top_left` | Kiri atas |
+| `top_right` | Kanan atas |
+| `bottom_left` | Kiri bawah |
+| `bottom_right` | Kanan bawah (default) |
+
+---
+
+## 6. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -367,7 +413,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 6. Download Result
+## 7. Download Result
 
 ```bash
 # External access (browser)
@@ -412,6 +458,12 @@ curl -o clip.mp4 "http://localhost:9002/video-clips/{job_id}.mp4"
 - **Background Box**: Rounded rectangle dengan transparency
 - **Edge Padding**: Configurable padding dari tepi frame
 - **Multi-format**: PNG, JPG, WebP export
+
+### Video Source Overlay
+- **FFmpeg drawtext**: Text overlay dengan background box
+- **Flexible positioning**: top_left, top_right, bottom_left, bottom_right
+- **Auto URL conversion**: minio:9000/localhost:9000 → minio-nca:9000
+- **Custom styling**: Font, size, color, background transparency
 
 ### Video Processing
 - **Exact duration**: No extra buffer

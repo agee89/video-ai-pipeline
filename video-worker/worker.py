@@ -12,6 +12,7 @@ try:
     from modules.callback import send_callback
     from modules.captioner import add_captions_to_video
     from modules.thumbnail import generate_thumbnail
+    from modules.video_source import add_video_source_to_video
 except ImportError as e:
     logging.error(f"Failed to import modules: {e}")
     raise
@@ -80,6 +81,7 @@ def process_video_job(job_data):
         # Build result
         result = {
             "job_id": job_id,
+            "clip_number": job_data.get("clip_number"),
             "clip": {
                 "url": upload_result['url'],
                 "url_external": upload_result['url_external'],
@@ -152,6 +154,7 @@ def process_caption_job(job_data):
         # Build result
         result = {
             "job_id": job_id,
+            "caps_number": job_data.get("caps_number"),
             "video": {
                 "url": upload_result['url'],
                 "url_external": upload_result['url_external']
@@ -385,6 +388,7 @@ def process_thumbnail_job(job_data):
         # Build result
         result = {
             "job_id": job_id,
+            "thumbnail_number": job_data.get("thumbnail_number"),
             "thumbnail": {
                 "url": upload_result["url"],
                 "url_external": upload_result["url_external"],
@@ -408,11 +412,75 @@ def process_thumbnail_job(job_data):
         redis_client.set(f"job:{job_id}:error", error_msg)
 
 
+def process_video_source_job(job_data):
+    """Process video source overlay job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing video source job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        video_url = job_data["video_url"]
+        channel_name = job_data["channel_name"]
+        prefix = job_data.get("prefix", "FullVideo:")
+        text_style = job_data.get("text_style", {})
+        background = job_data.get("background", {})
+        position = job_data.get("position", {})
+        
+        logger.info(f"Video URL: {video_url}")
+        logger.info(f"Channel: {prefix} {channel_name}")
+        
+        # Process video source overlay
+        result_data = add_video_source_to_video(
+            video_url=video_url,
+            job_id=job_id,
+            channel_name=channel_name,
+            prefix=prefix,
+            text_style=text_style,
+            background=background,
+            position=position
+        )
+        
+        # Upload to storage
+        logger.info("Uploading video with source overlay...")
+        upload_result = upload_to_storage(result_data["output_path"], f"{job_id}.mp4")
+        logger.info(f"Uploaded - n8n: {upload_result['url']}, External: {upload_result['url_external']}")
+        
+        # Cleanup local file
+        if os.path.exists(result_data["output_path"]):
+            os.remove(result_data["output_path"])
+            logger.info(f"Deleted: {result_data['output_path']}")
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "video": {
+                "url": upload_result['url'],
+                "url_external": upload_result['url_external']
+            },
+            "display_text": result_data.get("display_text", "")
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+        
+        logger.info(f"Video source job {job_id} completed successfully")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error processing video source job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:status", "failed")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
 def main():
     logger.info("Video Worker started")
     logger.info(f"Redis URL: {os.getenv('REDIS_URL')}")
     logger.info(f"Storage Endpoint: {os.getenv('STORAGE_ENDPOINT')}")
-    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, and thumbnail_jobs...")
+    logger.info("Listening for video_jobs, caption_jobs, transcribe_jobs, thumbnail_jobs, and video_source_jobs...")
     
     while True:
         try:
@@ -446,6 +514,14 @@ def main():
                 _, job_json = thumbnail_result
                 job_data = json.loads(job_json)
                 process_thumbnail_job(job_data)
+                continue
+            
+            # Check for video source jobs
+            video_source_result = redis_client.brpop("video_source_jobs", timeout=1)
+            if video_source_result:
+                _, job_json = video_source_result
+                job_data = json.loads(job_json)
+                process_video_source_job(job_data)
                 continue
             
             # Small sleep if no jobs

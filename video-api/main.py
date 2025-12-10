@@ -32,6 +32,7 @@ class ProcessVideoRequest(BaseModel):
     tracking_sensitivity: int = 5  # 1-10: 1=slow smooth, 10=fast responsive
     camera_smoothing: float = 0.25  # 0.05-0.5: Higher = faster camera movement
     callback_url: Optional[str] = None
+    clip_number: Optional[int] = None  # Passthrough identifier for tracking
     
     @field_validator('start_time', 'end_time')
     @classmethod
@@ -65,6 +66,7 @@ async def process_video(request: ProcessVideoRequest):
         "tracking_sensitivity": min(10, max(1, request.tracking_sensitivity)),
         "camera_smoothing": min(0.5, max(0.05, request.camera_smoothing)),
         "callback_url": request.callback_url,
+        "clip_number": request.clip_number,
         "status": "pending"
     }
     
@@ -103,6 +105,7 @@ class AddCaptionsRequest(BaseModel):
     model: str = "medium"  # Whisper model: tiny, base, small, medium, large
     settings: Optional[CaptionSettings] = None
     callback_url: Optional[str] = None
+    caps_number: Optional[int] = None  # Passthrough identifier for tracking
 
 class AddCaptionsResponse(BaseModel):
     status: str
@@ -127,6 +130,7 @@ async def add_captions(request: AddCaptionsRequest):
         "model": request.model,
         "settings": request.settings.model_dump() if request.settings else {},
         "callback_url": request.callback_url,
+        "caps_number": request.caps_number,
         "status": "pending"
     }
     
@@ -276,6 +280,7 @@ class ThumbnailRequest(BaseModel):
     text_overlay: TextOverlay
     export: Optional[ExportSettings] = None
     callback_url: Optional[str] = None
+    thumbnail_number: Optional[int] = None  # Passthrough identifier for tracking
 
 class ThumbnailResponse(BaseModel):
     status: str
@@ -312,6 +317,7 @@ async def generate_thumbnail(request: ThumbnailRequest):
         "export": (request.export.model_dump() if request.export 
                   else ExportSettings().model_dump()),
         "callback_url": request.callback_url,
+        "thumbnail_number": request.thumbnail_number,
         "status": "pending"
     }
     
@@ -327,3 +333,76 @@ async def generate_thumbnail(request: ThumbnailRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+# ==================== VIDEO SOURCE OVERLAY FEATURE ====================
+
+class VideoSourceTextStyle(BaseModel):
+    """Text styling options for video source overlay"""
+    font_family: str = "Montserrat"
+    font_size: int = 40
+    color: str = "#FFFFFF"
+    bold: bool = True
+    italic: bool = False
+
+class VideoSourceBackground(BaseModel):
+    """Background overlay options for video source text"""
+    enabled: bool = True
+    color: str = "rgba(0, 0, 0, 0.5)"
+    padding: int = 20
+    radius: int = 10
+
+class VideoSourcePosition(BaseModel):
+    """Position options for video source overlay"""
+    position: str = "bottom_right"  # top_left, top_right, bottom_left, bottom_right
+    margin_x: int = 30
+    margin_y: int = 30
+
+class AddVideoSourceRequest(BaseModel):
+    """Request to add video source overlay to a video"""
+    video_url: str
+    channel_name: str  # e.g. "MyYoutube Channel"
+    prefix: str = "FullVideo:"  # Text before channel name
+    text_style: Optional[VideoSourceTextStyle] = None
+    background: Optional[VideoSourceBackground] = None
+    position: Optional[VideoSourcePosition] = None
+    callback_url: Optional[str] = None
+
+class AddVideoSourceResponse(BaseModel):
+    status: str
+    job_id: str
+
+@app.post("/add_video_source", response_model=AddVideoSourceResponse)
+async def add_video_source(request: AddVideoSourceRequest):
+    """
+    Add video source overlay to a video
+    
+    - video_url: URL of the source video
+    - channel_name: Channel name to display (e.g. "MyYoutube Channel")
+    - prefix: Text before channel name (default: "FullVideo:")
+    - text_style: Text styling options
+    - background: Background overlay options
+    - position: Position on video
+    """
+    job_id = f"vsource_{uuid.uuid4().hex[:8]}"
+    
+    job_data = {
+        "job_id": job_id,
+        "job_type": "video_source",
+        "video_url": request.video_url,
+        "channel_name": request.channel_name,
+        "prefix": request.prefix,
+        "text_style": request.text_style.model_dump() if request.text_style else VideoSourceTextStyle().model_dump(),
+        "background": request.background.model_dump() if request.background else VideoSourceBackground().model_dump(),
+        "position": request.position.model_dump() if request.position else VideoSourcePosition().model_dump(),
+        "callback_url": request.callback_url,
+        "status": "pending"
+    }
+    
+    redis_client.lpush("video_source_jobs", json.dumps(job_data))
+    redis_client.set(f"job:{job_id}:status", "pending")
+    
+    return AddVideoSourceResponse(
+        status="accepted",
+        job_id=job_id
+    )

@@ -41,6 +41,7 @@ services:
       - redis
     networks:
       - pipe-network
+      - youtubeautomation_nca-network
 
   redis:
     image: redis:7-alpine
