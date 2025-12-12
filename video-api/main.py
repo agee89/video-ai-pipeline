@@ -98,7 +98,9 @@ class CaptionSettings(BaseModel):
     underline: bool = False
     strikeout: bool = False
     outline_width: int = 3
+    outline_color: str = "#000000"
     shadow_offset: int = 2
+    margin_v: int = 640
     position: str = "bottom_center"
     style: str = "highlight"  # highlight, karaoke, default
 
@@ -355,6 +357,9 @@ class VideoSourceBackground(BaseModel):
     color: str = "rgba(0, 0, 0, 0.5)"
     padding: int = 20
     radius: int = 10
+    border_color: Optional[str] = None
+    border_width: int = 0
+
 
 class VideoSourcePosition(BaseModel):
     """Position options for video source overlay"""
@@ -367,9 +372,11 @@ class AddVideoSourceRequest(BaseModel):
     video_url: str
     channel_name: str  # e.g. "MyYoutube Channel"
     prefix: str = "FullVideo:"  # Text before channel name
-    text_style: Optional[VideoSourceTextStyle] = None
+    prefix_style: Optional[TextStyle] = None
+    channel_style: Optional[TextStyle] = None
     background: Optional[VideoSourceBackground] = None
     position: Optional[VideoSourcePosition] = None
+
     callback_url: Optional[str] = None
 
 class AddVideoSourceResponse(BaseModel):
@@ -396,7 +403,12 @@ async def add_video_source(request: AddVideoSourceRequest):
         "video_url": request.video_url,
         "channel_name": request.channel_name,
         "prefix": request.prefix,
-        "text_style": request.text_style.model_dump() if request.text_style else VideoSourceTextStyle().model_dump(),
+        "video_url": request.video_url,
+        "channel_name": request.channel_name,
+        "prefix": request.prefix,
+        "prefix_style": request.prefix_style.model_dump() if request.prefix_style else TextStyle().model_dump(),
+        "channel_style": request.channel_style.model_dump() if request.channel_style else TextStyle().model_dump(),
+
         "background": request.background.model_dump() if request.background else VideoSourceBackground().model_dump(),
         "position": request.position.model_dump() if request.position else VideoSourcePosition().model_dump(),
         "callback_url": request.callback_url,

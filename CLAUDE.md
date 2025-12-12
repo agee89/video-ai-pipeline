@@ -13,7 +13,14 @@
 │   video-api     │───▶│     Redis       │◀───│  video-worker   │
 │   (FastAPI)     │    │   (Job Queue)   │    │   (Python)      │
 │   Port: 8000    │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+└───┬─────────────┘    └─────────────────┘    └─────────────────┘
+    │                                                  │
+    ▼                                                  ▼
+┌─────────────────┐                           ┌─────────────────┐
+│   dashboard     │                           │     MinIO       │
+│   (Streamlit)   │                           │  (S3 Storage)   │
+│   Port: 8501    │                           │  Port: 9002     │
+└─────────────────┘                           └─────────────────┘
                                                        │
                                                        ▼
                                               ┌─────────────────┐
@@ -32,6 +39,10 @@ video-ai-pipeline/
 ├── Readme.md
 ├── CLAUDE.md
 ├── storage/output/
+├── dashboard/               # Streamlit UI
+│   ├── Dockerfile
+│   ├── app.py
+│   └── requirements.txt
 ├── video-api/
 │   ├── Dockerfile
 │   ├── main.py              # FastAPI endpoints
@@ -436,6 +447,7 @@ docker-compose up -d --build video-worker
 
 # View logs
 docker logs video_worker -f
+docker logs video_dashboard -f
 
 # Check containers
 docker ps -a | grep video
@@ -517,3 +529,9 @@ git log --oneline -10
 - Pastikan external MinIO memiliki alias `minio-nca` di network
 - Video URL akan auto-convert: `minio:9000` → `minio-nca:9000`
 - Cek network connectivity: `docker exec video_worker python3 -c "import requests; r = requests.get('http://minio-nca:9000'); print(r.status_code)"`
+
+### YouTube Transcript API Error
+- **Issue**: `AttributeError: type object 'YouTubeTranscriptApi' has no attribute 'list_transcripts'`
+- **Cause**: Installed library version is `1.2.3` (non-standard).
+- **Fix**: Use `api = YouTubeTranscriptApi()` then `api.list(video_id)`. Returns Objects, not Dicts.
+

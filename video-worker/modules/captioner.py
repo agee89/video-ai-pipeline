@@ -14,6 +14,8 @@ import logging
 import sys
 import tempfile
 import urllib.request
+import requests
+import re
 from typing import Optional, Dict, Any
 
 logging.basicConfig(
@@ -45,19 +47,48 @@ def hex_to_ass_color(hex_color: str) -> str:
 
 def download_video_from_url(url: str, output_path: str) -> str:
     """Download video from URL (MinIO or external)"""
-    logger.info(f"[Caption] Downloading video from: {url}")
+    internal_url = url
     
-    # Handle internal Docker URLs
-    if 'minio:' in url or 'minio-video:' in url:
-        # Convert to internal URL if needed
-        internal_url = url.replace('localhost', 'minio').replace('minio-video', 'minio')
-        url = internal_url
+    # Handle hostname conflicts (Same as video_source.py):
+    # Convert external MinIO URL (port 9000) to use alias minio-nca
+    internal_url = re.sub(r'http://minio:9000/', 'http://minio-nca:9000/', internal_url)
+    internal_url = re.sub(r'http://localhost:9000/', 'http://minio-nca:9000/', internal_url)
+    
+    # Handle new minio-storage endpoint (port 9002)
+    internal_url = re.sub(r'http://localhost:9002/', 'http://minio-storage:9002/', internal_url)
+    internal_url = re.sub(r'http://127.0.0.1:9002/', 'http://minio-storage:9002/', internal_url)
+    internal_url = internal_url.replace("minio_storage", "minio-storage")
+    
+    # Handle misconfigured n8n URL
+    internal_url = re.sub(r'http://n8n-ncat:5678/', 'http://minio-storage:9002/', internal_url)
+    
+    # Convert n8n alias to internal hostname
+    internal_url = internal_url.replace("minio-video", "minio-storage")
+    
+    logger.info(f"[Caption] Downloading video from (internal): {internal_url}")
     
     try:
-        urllib.request.urlretrieve(url, output_path)
+        # Use session with retries and User-Agent
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(max_retries=3)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = session.get(internal_url, stream=True, timeout=120, headers=headers)
+        response.raise_for_status()
+        
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                
         logger.info(f"[Caption] Downloaded to: {output_path}")
         return output_path
     except Exception as e:
+        logger.error(f"[Caption] Download failed for {internal_url}: {e}")
         raise Exception(f"Failed to download video: {e}")
 
 
@@ -127,22 +158,20 @@ def generate_ass_subtitle(
     bold = settings.get("bold", True)
     italic = settings.get("italic", False)
     outline_width = settings.get("outline_width", 3)
+    outline_color = settings.get("outline_color", "#000000")
     shadow_offset = settings.get("shadow_offset", 2)
     position = settings.get("position", "bottom_center")
-    margin_v = settings.get("margin_v", 640)  # Distance from bottom (in pixels for 1920 height)
+    margin_v = settings.get("margin_v", 640)  # Default distance from edge
     
-    # For custom margin_v, use middle alignment (5) with vertical margin
-    # This allows precise positioning from the bottom
-    if margin_v != 80:  # Custom margin specified
-        alignment = 2  # Bottom center as base
-    else:
-        alignment = POSITION_MAP.get(position, 2)
+    # Determine alignment from position
+    alignment = POSITION_MAP.get(position, 2)  # Default to bottom_center (2)
     
     logger.info(f"[Caption] Style: font={font_family}, size={font_size}, margin_v={margin_v}, alignment={alignment}")
     
     # Convert colors
     ass_line_color = hex_to_ass_color(line_color)
     ass_word_color = hex_to_ass_color(word_color)
+    ass_outline_color = hex_to_ass_color(outline_color)
     
     # Font style
     bold_val = -1 if bold else 0
@@ -158,8 +187,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_family},{font_size},{ass_line_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{outline_width},{shadow_offset},{alignment},50,50,{margin_v},1
-Style: Highlight,{font_family},{font_size},{ass_word_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{outline_width},{shadow_offset},{alignment},50,50,{margin_v},1
+Style: Default,{font_family},{font_size},{ass_line_color},&H000000FF,{ass_outline_color},&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{outline_width},{shadow_offset},{alignment},50,50,{margin_v},1
+Style: Highlight,{font_family},{font_size},{ass_word_color},&H000000FF,{ass_outline_color},&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{outline_width},{shadow_offset},{alignment},50,50,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

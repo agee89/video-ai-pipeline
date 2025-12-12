@@ -1,0 +1,6 @@
+streamlit>=1.35.0
+requests
+yt-dlp>=2024.11.0
+pandas
+youtube-transcript-api>=0.6.3
+fonttools

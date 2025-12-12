@@ -1,6 +1,6 @@
 # Video AI Pipeline
 
-Auto-clipping YouTube videos dengan face tracking, active speaker detection, dan auto-caption.
+Auto-clipping YouTube videos dengan face tracking, active speaker detection, auto-caption, dan **Streamlit Dashboard**.
 
 ## Directory Structure
 
@@ -11,6 +11,10 @@ video-ai-pipeline/
 ├── Readme.md                # This file
 ├── CLAUDE.md                # AI assistant context
 ├── storage/output/          # Local output storage
+├── dashboard/               # Streamlit UI
+│   ├── Dockerfile
+│   ├── app.py               # Main application
+│   └── requirements.txt
 ├── video-api/
 │   ├── Dockerfile
 │   ├── main.py              # FastAPI endpoints
@@ -39,6 +43,32 @@ video-ai-pipeline/
 
 ---
 
+## Configuration (.env)
+
+Pastikan file `.env` tersedia di root folder dengan isi berikut:
+
+```ini
+S3_BUCKET_NAME=video-clips
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+REDIS_URL=redis://redis:6379
+STORAGE_ENDPOINT=http://minio:9000
+N8N_WEBHOOK_URL=https://local.yourdomain.my.id/webhook/clipper-generator
+```
+
+### Penjelasan Variable
+
+| Variable | Deskripsi | Context |
+|----------|-----------|---------|
+| `S3_BUCKET_NAME` | Nama bucket penyimpanan video/clip | MinIO |
+| `S3_ACCESS_KEY` | Username/Access Key Object Storage | MinIO |
+| `S3_SECRET_KEY` | Password/Secret Key Object Storage | MinIO |
+| `REDIS_URL` | URL koneksi ke Redis service | Job Queue |
+| `STORAGE_ENDPOINT`| Internal Service URL untuk MinIO | Backend |
+| `N8N_WEBHOOK_URL` | Endpoint Webhook untuk submit job dari Dashboard | Integration |
+
+---
+
 ## Quick Start
 
 ```bash
@@ -47,6 +77,12 @@ docker-compose up -d
 
 # Monitor logs
 docker logs video_worker -f
+
+# Access Dashboard
+http://localhost:8501
+
+
+docker logs video_dashboard -f
 ```
 
 ---
@@ -188,19 +224,51 @@ curl -X POST http://host.docker.internal:8000/add_captions \
 
 ### Caption Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `video_url` | string | required | URL of video (MinIO or external) |
-| `language` | string | "id" | Language code for Whisper |
-| `model` | string | "medium" | Whisper model (see below) |
-| `settings.font_family` | string | "Montserrat" | Font name |
-| `settings.font_size` | int | 60 | Font size in pixels |
-| `settings.line_color` | string | "#FFFFFF" | Default text color |
-| `settings.word_color` | string | "#FFDD5C" | Highlight color |
-| `settings.all_caps` | bool | true | Convert to uppercase |
-| `settings.max_words_per_line` | int | 3 | Words per line |
-| `settings.margin_v` | int | 640 | Vertical margin (640 = 2/3 from top) |
-| `settings.position` | string | "bottom_center" | Caption position |
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `video_url` | string | required | Video URL (S3/HTTP) |
+| `language` | string | "id" | Whisper Language Code |
+| `model` | string | "medium" | Whisper Model Size |
+| `settings` | object | {} | Custom Styling |
+
+### Supported Settings (within `settings` object)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `font_family` | "Montserrat" | Font name (matches file if installed, e.g. "Komika Axis") |
+| `font_size` | 60 | Font size in pixels |
+| `line_color` | "#FFFFFF" | Main text color (Hex) |
+| `word_color` | "#FFDD5C" | Highlight color for current word (Hex) |
+| `outline_color` | "#000000" | Outline/Stroke color (Hex) |
+| `outline_width` | 3 | Width of text outline in pixels |
+| `bold` | true | Bold text style |
+| `italic` | false | Italic text style |
+| `all_caps` | true | Force uppercase text |
+| `max_words_per_line` | 3 | Maximum words per line |
+| `margin_v` | 640 | Vertical margin from bottom edge (px) |
+| `position` | "bottom_center" | Anchor position (e.g. `top_left`, `center`, `bottom_center`) |
+
+### Example Payload
+```json
+{
+  "video_url": "http://minio-nca:9000/video-clips/input.mp4",
+  "language": "id",
+  "model": "small",
+  "settings": {
+    "font_family": "Komika Axis",
+    "font_size": 55,
+    "line_color": "#FFFFFF",
+    "word_color": "#00FF00",
+    "outline_color": "#FF0000",
+    "outline_width": 10,
+    "bold": true,
+    "italic": false,
+    "all_caps": true,
+    "margin_v": 200,
+    "position": "bottom_center"
+  }
+}
+```
 
 ### Whisper Models
 
@@ -383,44 +451,91 @@ curl -X POST http://host.docker.internal:8000/generate_thumbnail \
 
 ## 5. Video Source Overlay
 
-Tambahkan text overlay sumber video (channel name) pada video.
+Tambahkan text overlay sumber video (channel name) pada video dengan **Advanced Styling** (Rounded Box, Stroke, Mixed Styles).
 
 ```bash
 curl -X POST http://host.docker.internal:8000/add_video_source \
   -H "Content-Type: application/json" \
   -d '{
     "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
-    "channel_name": "MyYoutube Channel"
+    "channel_name": "MyYoutube Channel",
+    "prefix": "Watch full video on:",
+    "prefix_style": {
+        "font_family": "Montserrat",
+        "font_size": 30,
+        "color": "#FF0000",
+        "italic": true
+    },
+    "channel_style": {
+        "font_family": "Komika Axis",
+        "font_size": 40,
+        "color": "#FFFFFF",
+        "bold": true,
+        "stroke_color": "#000000",
+        "stroke_width": 2
+    },
+    "background": {
+        "color": "rgba(0,0,0,0.8)",
+        "radius": 15,
+        "padding": 20,
+        "border_color": "#FFFFFF",
+        "border_width": 3
+    },
+    "position": {
+        "position": "top_right",
+        "margin_x": 40,
+        "margin_y": 40
+    }
   }'
 ```
 
-Output: Video dengan text **"FullVideo: MyYoutube Channel"** di pojok kanan bawah.
-
 ### Video Source Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `video_url` | string | required | URL of video source |
-| `channel_name` | string | required | Channel name to display |
-| `prefix` | string | "FullVideo:" | Text before channel name |
-| `text_style.font_family` | string | "Montserrat" | Font name |
-| `text_style.font_size` | int | 40 | Font size in pixels |
-| `text_style.color` | string | "#FFFFFF" | Text color |
-| `text_style.bold` | bool | true | Bold text |
-| `background.enabled` | bool | true | Enable background box |
-| `background.color` | string | "rgba(0,0,0,0.5)" | Background color |
-| `background.padding` | int | 20 | Box padding |
-| `position.position` | string | "bottom_right" | Position on video |
-| `position.margin_x` | int | 30 | Horizontal margin |
-| `position.margin_y` | int | 30 | Vertical margin |
+| Name | Type | Type | Description |
+|------|------|---------|-------------|
+| `video_url` | string | required | Video URL |
+| `channel_name` | string | required | Main text to display |
+| `prefix` | string | "FullVideo:" | Text prefix |
+| `prefix_style` | object | {} | Style for prefix text |
+| `channel_style` | object | {} | Style for channel text |
+| `background` | object | {} | Background box styling |
+| `position` | object | {} | Positioning settings |
+
+### Style Object (`prefix_style` & `channel_style`)
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `font_family` | "Montserrat" | Font name (e.g., "Komika Axis") |
+| `font_size` | 40 | Font size in pixels |
+| `color` | "#FFFFFF" | Text color (Hex/RGBA) |
+| `bold` | true/false | Enable bold weight |
+| `italic` | false | Enable italic style |
+| `stroke_color` | null | Outline color (e.g., "#000000") |
+| `stroke_width` | 0 | Outline width in pixels |
+
+### Background Object
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | true | Show background box |
+| `color` | "rgba(0,0,0,0.5)" | Background color |
+| `padding` | 20 | Padding around text |
+| `radius` | 10 | **Corner Radius** (Rounded Box) |
+| `border_color` | null | Border line color |
+| `border_width` | 0 | Border line thickness |
 
 ### Position Options
 
 | Position | Description |
 |----------|-------------|
 | `top_left` | Kiri atas |
+| `top_center` | Tengah atas |
 | `top_right` | Kanan atas |
+| `center_left` | Tengah kiri |
+| `center` | Tepat di tengah |
+| `center_right` | Tengah kanan |
 | `bottom_left` | Kiri bawah |
+| `bottom_center` | Tengah bawah |
 | `bottom_right` | Kanan bawah (default) |
 
 ---
@@ -610,3 +725,34 @@ curl -o clip.mp4 "http://localhost:9002/video-clips/{job_id}.mp4"
 - **Exact duration**: No extra buffer
 - **Partial download**: Faster processing
 - **High quality**: H.264 CRF 18
+
+## 11. Streamlit Dashboard
+
+UI berbasis Web untuk memudahkan penggunaan pipeline tanpa curl command.
+
+**URL**: `http://localhost:8501`
+
+### Fitur Utama
+
+1.  **Auto Fetch Data**
+    *   Input URL YouTube.
+    *   Otomatis ambil Judul, Channel Name, dan Thumbnail.
+    *   **Smart Transcript**: Prioritas ambil subtitle **Bahasa Indonesia (Manual/Auto)**. Jika gagal, otomatis fallback ke `yt-dlp`.
+
+2.  **Video Context**
+    *   Tampilkan transcript lengkap dengan timestamp.
+    *   Bisa diedit manual sebelum dikirim ke AI.
+
+3.  **Advanced Camera Settings**
+    *   **Sensitivity (1-10)**: Mengatur kecepatan switch antar pembicara.
+    *   **Smoothing (0.05-0.5)**: Mengatur kehalusan pergerakan kamera.
+    *   **Zoom Threshold & Level**: Mengatur sensitivitas auto-zoom.
+
+5.  **Caption Styling & Preview**
+    *   **Live Preview**: Real-time visualisasi caption di atas thumbnail video.
+    *   **Preset Manager**: Simpan dan load setting caption favorit Anda (misal: "Karaoke Style", "Formal Style"). Supports **Save**, **Load**, dan **Delete** presets.
+    *   **Styling**: Font Family (custom fonts), Italic, Outline Color/Width, Highlight Color, dll.
+
+6.  **Automa Integration**
+    *   **One-Click Submit**: Kirim job langsung ke endpoint webhook n8n.
+    *   Payload mencakup URL, channel name, transcript, dan parameter kamera.

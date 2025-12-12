@@ -20,7 +20,17 @@ mp_face_detection = mp.solutions.face_detection
 
 def download_image(url: str) -> np.ndarray:
     """Download image from URL and return as numpy array."""
-    response = requests.get(url, timeout=30)
+    # Use session with retries and User-Agent
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(max_retries=3)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response = session.get(url, timeout=30, headers=headers)
     response.raise_for_status()
     image = Image.open(BytesIO(response.content))
     return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)

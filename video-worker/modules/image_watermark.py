@@ -32,7 +32,17 @@ def download_file(url: str, output_path: str) -> str:
     
     logger.info(f"Downloading: {internal_url}")
     
-    response = requests.get(internal_url, stream=True, timeout=120)
+    # Use session with retries and User-Agent
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(max_retries=3)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response = session.get(internal_url, stream=True, timeout=120, headers=headers)
     response.raise_for_status()
     
     with open(output_path, 'wb') as f:

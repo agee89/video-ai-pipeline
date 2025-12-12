@@ -323,13 +323,12 @@ def process_transcribe_job(job_data):
                     
                 except Exception as e:
                     logger.warning(f"YouTube transcript not available: {e}")
-                    use_whisper = True  # Fallback to Whisper
+                    # Fallback disabled per user request
                     
             except ImportError:
-                logger.warning("youtube-transcript-api not installed, using Whisper")
-                use_whisper = True
+                logger.warning("youtube-transcript-api not installed")
         
-        if use_whisper or len(segments) == 0:
+        if use_whisper:
             # Use Whisper for transcription (SLOWER but works for any video)
             logger.info("Using Whisper for transcription...")
             source = "whisper"
@@ -495,7 +494,8 @@ def process_video_source_job(job_data):
         video_url = job_data["video_url"]
         channel_name = job_data["channel_name"]
         prefix = job_data.get("prefix", "FullVideo:")
-        text_style = job_data.get("text_style", {})
+        prefix_style = job_data.get("prefix_style", {})
+        channel_style = job_data.get("channel_style", {})
         background = job_data.get("background", {})
         position = job_data.get("position", {})
         
@@ -508,7 +508,9 @@ def process_video_source_job(job_data):
             job_id=job_id,
             channel_name=channel_name,
             prefix=prefix,
-            text_style=text_style,
+            prefix_style=prefix_style,
+            channel_style=channel_style,
+
             background=background,
             position=position
         )

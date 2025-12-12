@@ -23,6 +23,23 @@ services:
       - pipe-network
       - shared-network
 
+  # === Streamlit Dashboard ===
+  dashboard:
+    build: ./dashboard
+    container_name: video_dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard:/app
+      - ./video-worker/fonts:/app/fonts:ro
+    environment:
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+    depends_on:
+      - video-api
+    networks:
+      - pipe-network
+      - shared-network
+
   # === Video Worker ===
   video-worker:
     build: ./video-worker
