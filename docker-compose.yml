@@ -1,11 +1,12 @@
 version: '3.9'
 
 services:
+  # === Video API ===
   video-api:
     build: ./video-api
     container_name: video_api
     environment:
-      - STORAGE_ENDPOINT=http://minio:9002
+      - STORAGE_ENDPOINT=http://minio-storage:9002
       - STORAGE_BUCKET=${S3_BUCKET_NAME}
       - STORAGE_ACCESS_KEY=${S3_ACCESS_KEY}
       - STORAGE_SECRET_KEY=${S3_SECRET_KEY}
@@ -17,16 +18,18 @@ services:
       - "8000:8000"
     depends_on:
       - redis
-      - minio
+      - minio-storage
     networks:
-      - pipe-network  # ← UBAH dari nca-network
+      - pipe-network
+      - shared-network
 
+  # === Video Worker ===
   video-worker:
     build: ./video-worker
     container_name: video_worker
     environment:
-      - STORAGE_ENDPOINT=http://minio:9002
-      - STORAGE_N8N_URL=http://minio-video:9002
+      - STORAGE_ENDPOINT=http://minio-storage:9002
+      - STORAGE_N8N_URL=http://minio-storage:9002
       - STORAGE_PUBLIC_URL=http://localhost:9002
       - STORAGE_BUCKET=${S3_BUCKET_NAME}
       - STORAGE_ACCESS_KEY=${S3_ACCESS_KEY}
@@ -42,14 +45,18 @@ services:
     networks:
       - pipe-network
       - youtubeautomation_nca-network
+      - shared-network
 
+  # === Redis ===
   redis:
     image: redis:7-alpine
     container_name: video_redis
     networks:
       - pipe-network
+      - shared-network
 
-  minio:
+  # === MinIO for Video Processing ===
+  minio-storage:
     image: minio/minio
     container_name: minio_storage
     command: server /data --address ":9002" --console-address ":9003"
@@ -64,15 +71,19 @@ services:
     networks:
       pipe-network:
       youtubeautomation_nca-network:
+      shared-network:
         aliases:
           - minio-video
+
+volumes:
+  minio_data:
+  whisper_cache:
+
 
 networks:
   pipe-network:
     external: true
   youtubeautomation_nca-network:
     external: true
-
-volumes:
-  minio_data:
-  whisper_cache:
+  shared-network:
+    external: true

@@ -20,6 +20,15 @@ def download_file(url: str, output_path: str) -> str:
     # Handle hostname conflicts
     internal_url = re.sub(r'http://minio:9000/', 'http://minio-nca:9000/', internal_url)
     internal_url = re.sub(r'http://localhost:9000/', 'http://minio-nca:9000/', internal_url)
+    
+    # Handle new minio-storage endpoint (port 9002)
+    internal_url = re.sub(r'http://localhost:9002/', 'http://minio-storage:9002/', internal_url)
+    internal_url = re.sub(r'http://127.0.0.1:9002/', 'http://minio-storage:9002/', internal_url)
+    internal_url = internal_url.replace("minio_storage", "minio-storage")
+    
+    # Handle misconfigured n8n URL
+    internal_url = re.sub(r'http://n8n-ncat:5678/', 'http://minio-storage:9002/', internal_url)
+    
     internal_url = internal_url.replace("minio-video", "minio")
     
     logger.info(f"Downloading: {internal_url}")
