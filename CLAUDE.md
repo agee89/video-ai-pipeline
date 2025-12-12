@@ -72,6 +72,8 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
   "face_tracking": true,
   "tracking_sensitivity": 5,
   "camera_smoothing": 0.15,
+  "zoom_threshold": 20.0,
+  "zoom_level": 1.15,
   "callback_url": "https://webhook.example.com"
 }
 ```
@@ -82,12 +84,14 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
 |-----------|-------|---------|----------|
 | `tracking_sensitivity` | 1-10 | 5 | Switch speed between speakers |
 | `camera_smoothing` | 0.05-0.5 | 0.25 | Camera movement speed |
+| `zoom_threshold` | 5.0-30.0 | 20.0 | Sensitivity for Dynamic Zoom (Higher = less sensitive) |
+| `zoom_level` | 1.0-1.5 | 1.15 | Zoom factor (1.15 = 15%) |
 
 **New Features:**
 - **Lock Mode**: Kamera terkunci pada speaker aktif + auto zoom
 - **2-Person Dialog Mode**: Mode cepat untuk sensitivity ≥7 + 2 orang
 - **Lost Face Recovery**: Auto switch jika wajah hilang 0.5 detik
-- **Dynamic Zoom**: Hingga 25% zoom saat tertawa/speaking
+- **Dynamic Zoom**: Otomatis zoom-in (customizable) saat tertawa/speaking
 
 **Recommended Combinations:**
 - Interview: `sensitivity=3, smoothing=0.15`
@@ -344,14 +348,13 @@ Check status job.
 - **Font Metrics**: Actual text height untuk alignment sempurna
 - **Multi-format**: PNG, JPG, WebP export
 
-### portrait.py - Face Tracking
-- **Hybrid approach**: Face Detection (wide shot) + Face Mesh (lip tracking)
-- **Initial Scan**: Lock ke wajah paling AKTIF (bukan terbesar)
-- **Lock Mode**: Tetap fokus pada speaker aktif + auto zoom
-- **2-Person Dialog Mode**: Switch cepat untuk sensitivity ≥7 + 2 orang
-- **Lost Face Recovery**: Auto switch jika wajah hilang 0.2 detik
-- **Dynamic Zoom**: Hingga 25% zoom saat tertawa/speaking aktif
-- **Smooth camera**: Configurable via `camera_smoothing` (default 0.25)
+### portrait.py - Face Tracking (Two-Pass Engine)
+- **Pass 1: Analysis**: Analisis seluruh video untuk memetakan wajah dan mendeteksi perubahan scene (cut).
+- **Pass 2: Execution**: Rendering video berdasarkan "Camera Path" yang presisi.
+- **Scene Cut Detection**: Kamera otomatis "snap" (potong) saat terjadi pergantian scene untuk menghindari efek swipe.
+- **Stabilized Locks**: Menggunakan logika "Anchor" untuk tracking yang halus anti-getar.
+- **Dynamic Zoom**: Zoom halus (hingga 25%) saat subjek tertawa atau berbicara aktif.
+- **Smart Logic**: Hybrid Face Detection + Face Mesh untuk akurasi tinggi.
 
 ### captioner.py - Auto Caption
 - **Whisper models**: tiny, base, small, medium, large

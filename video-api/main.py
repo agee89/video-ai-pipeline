@@ -31,6 +31,8 @@ class ProcessVideoRequest(BaseModel):
     face_tracking: bool = False
     tracking_sensitivity: int = 5  # 1-10: 1=slow smooth, 10=fast responsive
     camera_smoothing: float = 0.25  # 0.05-0.5: Higher = faster camera movement
+    zoom_threshold: float = 20.0  # 8.0-30.0: Lip activity threshold (Higher = only laugh/surprise)
+    zoom_level: float = 1.15      # 1.0-1.5: Target zoom factor (1.15 = 15% zoom)
     callback_url: Optional[str] = None
     clip_number: Optional[int] = None  # Passthrough identifier for tracking
     
@@ -65,6 +67,8 @@ async def process_video(request: ProcessVideoRequest):
         "face_tracking": request.face_tracking,
         "tracking_sensitivity": min(10, max(1, request.tracking_sensitivity)),
         "camera_smoothing": min(0.5, max(0.05, request.camera_smoothing)),
+        "zoom_threshold": request.zoom_threshold,
+        "zoom_level": request.zoom_level,
         "callback_url": request.callback_url,
         "clip_number": request.clip_number,
         "status": "pending"

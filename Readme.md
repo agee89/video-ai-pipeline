@@ -78,17 +78,20 @@ curl -X POST http://host.docker.internal:8000/process_video \
 | `face_tracking` | bool | false | Enable active speaker tracking |
 | `tracking_sensitivity` | int | 5 | 1-10 (1=stay longer, 10=switch faster) |
 | `camera_smoothing` | float | 0.25 | 0.05-0.5 (higher = faster camera movement) |
+| `zoom_threshold` | float | 20.0 | 5.0-30.0 (Lip activity threshold: higher = less sensitive) |
+| `zoom_level` | float | 1.15 | 1.0-1.5 (Target zoom factor: 1.15 = 15% zoom) |
 
 ### Face Tracking Parameters Guide
 
 #### How Face Tracking Works
 
-1. **Initial Scan**: Sistem scan ~1 detik pertama untuk menemukan wajah **PALING AKTIF** (bukan terbesar)
-2. **Hybrid Detection**: Face Detection (jarak jauh) + Face Mesh (lip tracking)
-3. **Lock Mode**: Saat fokus pada speaker aktif, kamera tetap terkunci dan zoom in
-4. **2-Person Dialog Mode**: Mode khusus untuk 2 orang + sensitivity tinggi (≥7) - switch lebih cepat
-5. **Lost Face Recovery**: Jika wajah hilang 0.5 detik, otomatis switch ke wajah yang terlihat
-6. **Dynamic Zoom**: Otomatis zoom-in hingga **25%** saat tertawa/terkejut/speaking aktif
+1. **Initial Scan**: Sistem scan seluruh video untuk memetakan wajah dan mendeteksi perubahan scene (*Two-Pass Analysis*)
+2. **Scene Cut Detection**: Kamera otomatis "snap" saat adegan berganti (anti-swipe effect)
+3. **Stabilized Lock**: Kamera stabil dengan logika "Anchor", tidak bergetar mengikuti noise deteksi
+4. **Hybrid Detection**: Face Detection (jarak jauh) + Face Mesh (lip tracking)
+5. **Lock Mode**: Saat fokus pada speaker aktif, kamera tetap terkunci
+6. **Dynamic Zoom**: Otomatis zoom-in (customizable) saat tertawa/terkejut/speaking aktif
+7. **Lost Face Recovery**: Jika wajah hilang 0.5 detik, otomatis switch ke wajah yang terlihat
 
 > Dokumentasi teknis lengkap: [FACE_TRACKING.md](./FACE_TRACKING.md)
 
@@ -120,6 +123,18 @@ Mengontrol **kecepatan pergerakan kamera** saat mengikuti wajah.
 | 0.35 | Cepat | Tracking lebih ketat |
 | 0.50 | Instant | Mengikuti wajah tanpa delay |
 
+#### `zoom_threshold` & `zoom_level`
+
+Mengontrol perilaku Dynamic Zoom.
+
+*   **`zoom_threshold` (Default 20.0)**:
+    *   Angka Tinggi (>20): Hanya zoom saat tertawa lebar / kaget.
+    *   Angka Rendah (<10): Zoom saat bicara biasa.
+*   **`zoom_level` (Default 1.15)**:
+    *   1.0: Zoom mati.
+    *   1.15: Zoom 15% (subtle).
+    *   1.50: Zoom 50% (extreme close-up).
+
 #### Rekomendasi Kombinasi
 
 | Skenario | sensitivity | smoothing | Catatan |
@@ -139,7 +154,9 @@ Mengontrol **kecepatan pergerakan kamera** saat mengikuti wajah.
   "portrait": true,
   "face_tracking": true,
   "tracking_sensitivity": 5,
-  "camera_smoothing": 0.15
+  "camera_smoothing": 0.15,
+  "zoom_threshold": 20.0,
+  "zoom_level": 1.15
 }
 ```
 
