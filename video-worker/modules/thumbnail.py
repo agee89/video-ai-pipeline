@@ -374,6 +374,42 @@ def apply_text_overlay(image: np.ndarray, text_config: dict) -> np.ndarray:
         except:
             logger.warning(f"[Thumbnail] Could not parse text_shadow: {text_shadow}")
     
+    # Get letter spacing
+    letter_spacing = style.get("letter_spacing", 0) or 0
+    
+    # Helper to calculate line width with letter spacing
+    def get_line_width_with_spacing(text, font, spacing=0):
+        if spacing == 0:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            return bbox[2] - bbox[0]
+        else:
+            total_width = 0
+            for i, char in enumerate(text):
+                char_bbox = draw.textbbox((0, 0), char, font=font)
+                char_width = char_bbox[2] - char_bbox[0]
+                total_width += char_width
+                if i < len(text) - 1:
+                    total_width += spacing
+            return total_width
+
+    # Helper function to draw text with letter spacing
+    def draw_text_with_spacing(draw_obj, pos, text, font, fill, spacing=0, stroke_width=0, stroke_fill=None):
+        if spacing == 0:
+            # Normal drawing
+            if stroke_width > 0 and stroke_fill:
+                draw_obj.text(pos, text, font=font, fill=stroke_fill, stroke_width=stroke_width)
+            draw_obj.text(pos, text, font=font, fill=fill)
+        else:
+            # Character by character with spacing
+            x, y = pos
+            for char in text:
+                if stroke_width > 0 and stroke_fill:
+                    draw_obj.text((x, y), char, font=font, fill=stroke_fill, stroke_width=stroke_width)
+                draw_obj.text((x, y), char, font=font, fill=fill)
+                char_bbox = draw_obj.textbbox((0, 0), char, font=font)
+                char_width = char_bbox[2] - char_bbox[0]
+                x += char_width + spacing
+    
     # Calculate max text width - use more of the available space
     # Edge padding is minimum from edge, bg_padding is inside the box
     available_width = img_w - (edge_padding * 2)
@@ -389,8 +425,7 @@ def apply_text_overlay(image: np.ndarray, text_config: dict) -> np.ndarray:
     
     for word in words:
         test_line = f"{current_line} {word}".strip()
-        bbox = draw.textbbox((0, 0), test_line, font=font)
-        line_width = bbox[2] - bbox[0]
+        line_width = get_line_width_with_spacing(test_line, font, letter_spacing)
         
         if line_width <= max_text_width:
             current_line = test_line
@@ -443,8 +478,8 @@ def apply_text_overlay(image: np.ndarray, text_config: dict) -> np.ndarray:
     # Find max line width for background box
     max_line_width = 0
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        max_line_width = max(max_line_width, bbox[2] - bbox[0])
+        width = get_line_width_with_spacing(line, font, letter_spacing)
+        max_line_width = max(max_line_width, width)
     
     # Y position - default higher on screen
     y_pos = position.get("y", "bottom")
@@ -524,42 +559,6 @@ def apply_text_overlay(image: np.ndarray, text_config: dict) -> np.ndarray:
                 radius=radius,
                 fill=bg_color_tuple
             )
-    
-    # Get letter spacing
-    letter_spacing = style.get("letter_spacing", 0) or 0
-    
-    # Helper function to draw text with letter spacing
-    def draw_text_with_spacing(draw_obj, pos, text, font, fill, spacing=0, stroke_width=0, stroke_fill=None):
-        if spacing == 0:
-            # Normal drawing
-            if stroke_width > 0 and stroke_fill:
-                draw_obj.text(pos, text, font=font, fill=stroke_fill, stroke_width=stroke_width)
-            draw_obj.text(pos, text, font=font, fill=fill)
-        else:
-            # Character by character with spacing
-            x, y = pos
-            for char in text:
-                if stroke_width > 0 and stroke_fill:
-                    draw_obj.text((x, y), char, font=font, fill=stroke_fill, stroke_width=stroke_width)
-                draw_obj.text((x, y), char, font=font, fill=fill)
-                char_bbox = draw_obj.textbbox((0, 0), char, font=font)
-                char_width = char_bbox[2] - char_bbox[0]
-                x += char_width + spacing
-    
-    # Helper to calculate line width with letter spacing
-    def get_line_width_with_spacing(text, font, spacing=0):
-        if spacing == 0:
-            bbox = draw.textbbox((0, 0), text, font=font)
-            return bbox[2] - bbox[0]
-        else:
-            total_width = 0
-            for i, char in enumerate(text):
-                char_bbox = draw.textbbox((0, 0), char, font=font)
-                char_width = char_bbox[2] - char_bbox[0]
-                total_width += char_width
-                if i < len(text) - 1:
-                    total_width += spacing
-            return total_width
     
     # Draw each line of text
     text_color = parse_color(style.get("color", "#FFFFFF"))

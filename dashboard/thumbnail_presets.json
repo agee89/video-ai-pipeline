@@ -1,0 +1,23 @@
+{
+  "LiteStoryChannel-Green": {
+    "thumb_font": "Komika Axis",
+    "thumb_size": 95,
+    "thumb_weight": "bold",
+    "thumb_color": "#ffffff",
+    "thumb_transform": "capitalize",
+    "thumb_stroke_color": "#676400",
+    "thumb_stroke_width": 2,
+    "thumb_shadow_color": "#fff4cf",
+    "thumb_spacing": 1,
+    "thumb_line_height": 1.6000000000000003,
+    "thumb_bg_enable": true,
+    "thumb_bg_full": true,
+    "thumb_bg_gradient": true,
+    "thumb_bg_color": "rgba(255, 170, 0, 1.9)",
+    "thumb_grad_height": 1000,
+    "thumb_pos_y": "bottom",
+    "thumb_margin_btm": 150,
+    "thumb_edge_pad": 10,
+    "thumb_max_lines": 4
+  }
+}
