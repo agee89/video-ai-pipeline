@@ -1,32 +1,4 @@
 {
-  "RedStar": {
-    "cfg_font_family": "Komika Axis",
-    "cfg_font_size": 130,
-    "cfg_line_color": "#ff2727",
-    "cfg_word_color": "#000000",
-    "cfg_max_words": 2,
-    "cfg_outline_width": 20,
-    "cfg_outline_color": "#fffdfd",
-    "cfg_margin_v": 300,
-    "cfg_position": "bottom_center",
-    "cfg_bold": true,
-    "cfg_italic": true,
-    "cfg_all_caps": true
-  },
-  "Badut": {
-    "cfg_font_family": "Komika Axis",
-    "cfg_font_size": 120,
-    "cfg_line_color": "#ffffff",
-    "cfg_word_color": "#7d7d7d",
-    "cfg_max_words": 2,
-    "cfg_outline_width": 20,
-    "cfg_outline_color": "#080808",
-    "cfg_margin_v": 230,
-    "cfg_position": "bottom_center",
-    "cfg_bold": true,
-    "cfg_italic": true,
-    "cfg_all_caps": true
-  },
   "LiteStoryChannel-Green": {
     "cfg_font_family": "Komika Axis",
     "cfg_font_size": 140,

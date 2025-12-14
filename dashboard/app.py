@@ -133,10 +133,10 @@ if "cfg_font_family" not in st.session_state:
 
 
 st.set_page_config(
-    page_title="AI Clipper Generator",
-    page_icon="🤖",
-    layout="centered", # Single column centered
-    initial_sidebar_state="collapsed"
+    page_title="AI Video Clipper",
+    page_icon="🎬",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
 # --- Custom CSS (Original Simple Style) ---
@@ -167,7 +167,6 @@ st.markdown("""
 
 # --- Header ---
 st.markdown("<h1 class='main-header'>🤖 AI Video Clipper</h1>", unsafe_allow_html=True)
-st.caption("Generate viral short clips from YouTube with auto-transcription and face tracking.")
 
 if not WEBHOOK_URL:
     st.error("⚠️ Configuration Error: N8N_WEBHOOK_URL environment variable is missing!")
@@ -365,11 +364,10 @@ def fetch_transcript(url):
 
 # --- INPUT SECTION ---
 with st.container():
-    st.subheader("1. Source Video")
     col_input, col_btn = st.columns([4, 1], vertical_alignment="bottom") 
     
     with col_input:
-        youtube_url = st.text_input("YouTube Link", placeholder="https://youtube.com/watch?v=...", key="clipper_url")
+        youtube_url = st.text_input("", placeholder="Youtube URL Here (eg: https://youtube.com/watch?v=...", key="clipper_url")
     
     with col_btn:
         load_btn = st.button("Load Data", type="primary", use_container_width=True, key="clipper_load")
@@ -413,11 +411,13 @@ if st.session_state['meta_data']:
             st.subheader(meta['title'])
             channel_name = st.text_input("Channel Name", value=meta['channel'], key="clipper_channel")
             
-    st.subheader("2. Context")
-    transcript = st.text_area("Video Transcript", value=st.session_state['transcript_text'], height=250, key="clipper_transcript")
-
-    st.markdown("---")
-    st.subheader("3. Video Configuration")
+    # Transcript Section (Hidden by default)
+    if st.session_state.get('transcript_text'):
+        with st.expander("👁️ Show/Edit Transcript"):
+            transcript = st.text_area("Video Transcript", value=st.session_state['transcript_text'], height=250, key="clipper_transcript")
+    else:
+        # Fallback if empty
+        transcript = st.text_area("Video Transcript", value="", height=250, key="clipper_transcript")
     
     with st.expander("⚙️ Advanced Camera Settings", expanded=False):
         col1, col2 = st.columns(2)
@@ -432,16 +432,15 @@ if st.session_state['meta_data']:
             zoom_level = st.slider("Zoom Amount", 1.0, 1.5, 1.15, help="1.15 = 15% Zoom", key="clipper_zoom_lvl")
 
     # --- 4. CAPTION SETTINGS & PREVIEW ---
+
     st.markdown("---")
-    st.subheader("4. Caption Analysis & Styling")
-    
     col_cap_settings, col_cap_preview = st.columns([1, 1])
     
     with col_cap_settings:
-        st.write("**Style Configuration**")
+        st.write("**Captions Setting**")
         
         # --- PRESET MANAGEMENT ---
-        with st.expander("💾 Load / Save Preset", expanded=True):
+        with st.expander("💾 Load / Save Preset", expanded=False):
             presets = load_presets()
             preset_names = ["-- Select Preset --"] + list(presets.keys())
             
@@ -512,92 +511,90 @@ if st.session_state['meta_data']:
                             st.session_state.confirm_delete = None
                             st.rerun()
             
-        st.markdown("---")
-        
-        # Font Settings
-        def get_available_fonts_map():
-            font_dir = "/app/fonts"
-            defaults = {"Komika Axis": "KOMIKAX_.ttf", "Montserrat": "Montserrat-Regular.ttf", "Arial": "arial.ttf", "Impact": "impact.ttf"} 
-            font_map = {} 
-            try:
-                if os.path.exists(font_dir):
-                    for filename in os.listdir(font_dir):
-                        if not filename.lower().endswith(('.ttf', '.otf')):
-                            continue
-                        filepath = os.path.join(font_dir, filename)
-                        try:
-                            font = TTFont(filepath)
-                            family_name = ""
-                            for record in font['name'].names:
-                                if record.nameID == 1: 
-                                    family_name = record.string.decode(record.getEncoding())
-                                    break
-                            if not family_name:
+        with st.expander("📝 Caption Configuration", expanded=False):
+            # Font Settings
+            def get_available_fonts_map():
+                font_dir = "/app/fonts"
+                defaults = {"Komika Axis": "KOMIKAX_.ttf", "Montserrat": "Montserrat-Regular.ttf", "Arial": "arial.ttf", "Impact": "impact.ttf"} 
+                font_map = {} 
+                try:
+                    if os.path.exists(font_dir):
+                        for filename in os.listdir(font_dir):
+                            if not filename.lower().endswith(('.ttf', '.otf')):
+                                continue
+                            filepath = os.path.join(font_dir, filename)
+                            try:
+                                font = TTFont(filepath)
+                                family_name = ""
                                 for record in font['name'].names:
-                                    if record.nameID == 4: 
+                                    if record.nameID == 1: 
                                         family_name = record.string.decode(record.getEncoding())
                                         break
-                            display_name = family_name.replace('\x00', '') if family_name else os.path.splitext(filename)[0]
-                            font_map[display_name] = filename
-                        except Exception:
-                            font_map[os.path.splitext(filename)[0]] = filename
-                            pass
-            except Exception as e:
-                pass
-            if font_map:
-                return dict(sorted(font_map.items()))
-            return defaults
+                                if not family_name:
+                                    for record in font['name'].names:
+                                        if record.nameID == 4: 
+                                            family_name = record.string.decode(record.getEncoding())
+                                            break
+                                display_name = family_name.replace('\x00', '') if family_name else os.path.splitext(filename)[0]
+                                font_map[display_name] = filename
+                            except Exception:
+                                font_map[os.path.splitext(filename)[0]] = filename
+                                pass
+                except Exception as e:
+                    pass
+                if font_map:
+                    return dict(sorted(font_map.items()))
+                return defaults
 
-        font_map = get_available_fonts_map()
-        available_font_names = list(font_map.keys())
+            font_map = get_available_fonts_map()
+            available_font_names = list(font_map.keys())
 
-        # Ensure loaded font is in list, otherwise default to first
-        default_font_idx = 0
-        current_font = st.session_state.get("cfg_font_family", "Komika Axis")
-        if current_font in available_font_names:
-            default_font_idx = available_font_names.index(current_font)
+            # Ensure loaded font is in list, otherwise default to first
+            default_font_idx = 0
+            current_font = st.session_state.get("cfg_font_family", "Komika Axis")
+            if current_font in available_font_names:
+                default_font_idx = available_font_names.index(current_font)
 
-        c1, c2 = st.columns(2)
-        with c1:
-            font_family = st.selectbox("Font Family", available_font_names, index=default_font_idx, key="cfg_font_family")
-            font_size = st.number_input("Font Size (px)", 40, 200, step=10, key="cfg_font_size")
-        with c2:
-            # Grouping all colors here
-            col_colors = st.columns(3)
-            with col_colors[0]:
-                line_color = st.color_picker("Text Color", key="cfg_line_color")
-            with col_colors[1]:
-                word_color = st.color_picker("Highlight", key="cfg_word_color")
-            with col_colors[2]:
-                outline_color = st.color_picker("Outline", key="cfg_outline_color")
+            c1, c2 = st.columns(2)
+            with c1:
+                font_family = st.selectbox("Font Family", available_font_names, index=default_font_idx, key="cfg_font_family")
+                font_size = st.number_input("Font Size (px)", 40, 200, step=10, key="cfg_font_size")
+            with c2:
+                # Grouping all colors here
+                col_colors = st.columns(3)
+                with col_colors[0]:
+                    line_color = st.color_picker("Text Color", key="cfg_line_color")
+                with col_colors[1]:
+                    word_color = st.color_picker("Highlight", key="cfg_word_color")
+                with col_colors[2]:
+                    outline_color = st.color_picker("Outline", key="cfg_outline_color")
+                
+            # Layout Settings
             
-        # Layout Settings
-        
-        # Ensure position index
-        pos_opts = ["bottom_center", "bottom_left", "bottom_right", "top_center", "top_left", "top_right", "center"]
-        curr_pos = st.session_state.get("cfg_position", "bottom_center")
-        pos_idx = pos_opts.index(curr_pos) if curr_pos in pos_opts else 0
+            # Ensure position index
+            pos_opts = ["bottom_center", "bottom_left", "bottom_right", "top_center", "top_left", "top_right", "center"]
+            curr_pos = st.session_state.get("cfg_position", "bottom_center")
+            pos_idx = pos_opts.index(curr_pos) if curr_pos in pos_opts else 0
 
-        c3, c4 = st.columns(2)
-        with c3:
-            max_words = st.number_input("Max Words/Line", 2, 10, key="cfg_max_words")
-            outline_width = st.number_input("Outline Width", 0, 50, key="cfg_outline_width")
-        with c4:
-            margin_v = st.number_input("Vertical Margin (px)", 0, 1000, help="Distance from vertical edge", key="cfg_margin_v")
-            position = st.selectbox("Position", pos_opts, index=pos_idx, key="cfg_position")
+            c3, c4 = st.columns(2)
+            with c3:
+                max_words = st.number_input("Max Words/Line", 2, 10, key="cfg_max_words")
+                outline_width = st.number_input("Outline Width", 0, 50, key="cfg_outline_width")
+            with c4:
+                margin_v = st.number_input("Vertical Margin (px)", 0, 1000, help="Distance from vertical edge", key="cfg_margin_v")
+                position = st.selectbox("Position", pos_opts, index=pos_idx, key="cfg_position")
 
-        # Toggles
-        st.write("**Text Style**")
-        c_toggles = st.columns(3) # Use 3 columns for 3 toggles
-        with c_toggles[0]:
-            is_bold = st.checkbox("Bold Text", key="cfg_bold")
-        with c_toggles[1]:
-            is_italic = st.checkbox("Italic Text", key="cfg_italic")
-        with c_toggles[2]:
-            is_all_caps = st.checkbox("All Caps", key="cfg_all_caps")
+            # Toggles
+            st.write("**Text Style**")
+            c_toggles = st.columns(3) # Use 3 columns for 3 toggles
+            with c_toggles[0]:
+                is_bold = st.checkbox("Bold Text", key="cfg_bold")
+            with c_toggles[1]:
+                is_italic = st.checkbox("Italic Text", key="cfg_italic")
+            with c_toggles[2]:
+                is_all_caps = st.checkbox("All Caps", key="cfg_all_caps")
 
     with col_cap_preview:
-        st.write("**Live Preview (Approximate)**")
         
         # --- Preview Calculation Logic (Same as before) ---
         # 1. Load and Embed Font
@@ -732,8 +729,6 @@ if st.session_state['meta_data']:
 # Only show if we have metadata
 if st.session_state.get('meta_data'):
     st.markdown("---")
-    st.subheader("5. Thumbnail Generator")
-    st.caption("Create custom video thumbnails with text overlay.")
 
     meta = st.session_state['meta_data']
     thumb_video_url = meta.get('video_url', '')
@@ -745,7 +740,7 @@ if st.session_state.get('meta_data'):
     col_thumb_settings, col_thumb_preview = st.columns([1, 1])
 
     with col_thumb_settings:
-        st.write("**Configuration**")
+        st.write("**Thumbnail Settings**")
 
         # --- PRESET MANAGER ---
         thumb_presets = load_thumb_presets()
@@ -758,7 +753,7 @@ if st.session_state.get('meta_data'):
                 apply_thumb_preset(sel)
 
         # --- PRESET MANAGER (Matched Section 4) ---
-        with st.expander("💾 Load / Save Preset", expanded=True):
+        with st.expander("💾 Load / Save Preset", expanded=False):
             thumb_presets = load_thumb_presets()
             thumb_preset_names = ["-- Select Preset --"] + list(thumb_presets.keys())
             
@@ -833,14 +828,14 @@ if st.session_state.get('meta_data'):
 
         
         # Text Inputs
-        default_text = meta.get('title', 'EPIC MOMENT')
-        thumb_text = st.text_area("Thumbnail Text", value=default_text, height=80, key="thumb_text")
+        # Text Inputs (Locked to YouTube Title, hidden from UI)
+        thumb_text = meta.get('title', 'EPIC MOMENT')
         
         # Typography
         # --- CONFIGURATION UI (Refined & Compact) ---
         
         # 1. Typography
-        with st.expander("Aa Typography & Colors", expanded=True):
+        with st.expander("Aa Typography & Colors", expanded=False):
             # Row 1: Main Font Settings
             c_f1, c_f2, c_f3 = st.columns([3, 1, 1])
             with c_f1:
@@ -955,7 +950,6 @@ if st.session_state.get('meta_data'):
                  bg_grad_height = 0
 
     with col_thumb_preview:
-        st.write("**Live Preview (Approximate)**")
         
         # --- Preview Calculation for Thumbnail ---
         # 1. Scale Factors (Visual approximation for small UI)

@@ -157,7 +157,8 @@ def generate_ass_subtitle(
     max_words = settings.get("max_words_per_line", 3)
     bold = settings.get("bold", True)
     italic = settings.get("italic", False)
-    outline_width = settings.get("outline_width", 3)
+    # User reported output outlines are 2x too thick relative to input value
+    outline_width = int(settings.get("outline_width", 3) * 0.5)
     outline_color = settings.get("outline_color", "#000000")
     shadow_offset = settings.get("shadow_offset", 2)
     position = settings.get("position", "bottom_center")
