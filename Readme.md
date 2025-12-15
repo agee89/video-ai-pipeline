@@ -737,21 +737,28 @@ UI berbasis Web untuk memudahkan penggunaan pipeline tanpa curl command.
 1.  **Auto Fetch Data**
     *   Input URL YouTube.
     *   Otomatis ambil Judul, Channel Name, dan Thumbnail.
-    *   **Smart Transcript**: Prioritas ambil subtitle **Bahasa Indonesia (Manual/Auto)**. Jika gagal, otomatis fallback ke `yt-dlp`.
+    *   **Smart Transcript**: Prioritas ambil subtitle bahasa indonesia.
 
-2.  **Video Context**
-    *   Tampilkan transcript lengkap dengan timestamp.
-    *   Bisa diedit manual sebelum dikirim ke AI.
+2.  **Video Context (Clean UI)**
+    *   Transcript disembunyikan secara default ("Hidden").
+    *   Toggle **"👁️ Show/Edit Transcript"** untuk melihat atau mengedit teks secara manual.
 
 3.  **Advanced Camera Settings**
     *   **Sensitivity (1-10)**: Mengatur kecepatan switch antar pembicara.
     *   **Smoothing (0.05-0.5)**: Mengatur kehalusan pergerakan kamera.
     *   **Zoom Threshold & Level**: Mengatur sensitivitas auto-zoom.
 
-5.  **Caption Styling & Preview**
-    *   **Live Preview**: Real-time visualisasi caption di atas thumbnail video.
-    *   **Preset Manager**: Simpan dan load setting caption favorit Anda (misal: "Karaoke Style", "Formal Style"). Supports **Save**, **Load**, dan **Delete** presets.
-    *   **Styling**: Font Family (custom fonts), Italic, Outline Color/Width, Highlight Color, dll.
+4.  **Caption Styling & Preview**
+    *   **Live Preview**: Real-time visualisasi caption dengan **kalibrasi visual** (WYSIWYG).
+    *   **Preset Manager**: Simpan/Load setting favorit Anda.
+    *   **Collapsible Settings**: Pengaturan detail (Font, Color, Layout) tersimpan rapi dalam menu *accordion* agar tidak memenuhi layar.
+    *   **Smart Scaling**: Preview outline width dan font size dikalibrasi agar sesuai dengan output video final.
+
+5.  **Thumbnail Generator (Simplified)**
+    *   **Automatic Text**: Otomatis menggunakan judul YouTube sebagai teks thumbnail.
+    *   **No Manual Input**: Input teks manual dihapuskan untuk simplifikasi.
+    *   **Visual Preview**: Langsung melihat hasil layout thumbnail sebelum generate.
+    *   **Preset Support**: Simpan gaya thumbnail (font, warna background, posisi) sebagai preset (terpisah dari caption preset).
 
 6.  **Automa Integration**
     *   **One-Click Submit**: Kirim job langsung ke endpoint webhook n8n.

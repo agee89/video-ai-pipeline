@@ -19,5 +19,26 @@
     "thumb_margin_btm": 150,
     "thumb_edge_pad": 10,
     "thumb_max_lines": 4
+  },
+  "LiteStoryChannel-Poppins": {
+    "thumb_font": "Poppins",
+    "thumb_size": 120,
+    "thumb_weight": "bold",
+    "thumb_color": "#ffffff",
+    "thumb_transform": "capitalize",
+    "thumb_stroke_color": "#000000",
+    "thumb_stroke_width": 3,
+    "thumb_shadow_color": "#9a6400",
+    "thumb_spacing": 1,
+    "thumb_line_height": 1.2,
+    "thumb_bg_enable": true,
+    "thumb_bg_full": true,
+    "thumb_bg_gradient": true,
+    "thumb_bg_color": "rgba(255, 170, 0, 1.9)",
+    "thumb_grad_height": 1200,
+    "thumb_pos_y": "bottom",
+    "thumb_margin_btm": 280,
+    "thumb_edge_pad": 10,
+    "thumb_max_lines": 4
   }
 }

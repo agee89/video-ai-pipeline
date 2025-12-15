@@ -59,6 +59,10 @@ def find_best_frame(video_path: str, prefer: str = "centered", sample_interval: 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
+    # NEW: Skip first 15% of video to avoid intros/host
+    start_frame = int(total_frames * 0.15)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    
     best_frame = None
     best_score = -1
     
@@ -67,7 +71,7 @@ def find_best_frame(video_path: str, prefer: str = "centered", sample_interval: 
         min_detection_confidence=0.5
     ) as face_detector:
         
-        frame_idx = 0
+        frame_idx = start_frame
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -83,42 +87,75 @@ def find_best_frame(video_path: str, prefer: str = "centered", sample_interval: 
             results = face_detector.process(rgb_frame)
             
             if results.detections:
-                for detection in results.detections:
+                detections = results.detections
+                num_faces = len(detections)
+                
+                # Sort detections by size (largest first)
+                faces = []
+                for detection in detections:
                     bbox = detection.location_data.relative_bounding_box
-                    confidence = detection.score[0] if detection.score else 0.5
-                    
-                    # Calculate face metrics
-                    face_cx = bbox.xmin + bbox.width / 2
-                    face_cy = bbox.ymin + bbox.height / 2
-                    face_size = bbox.width * bbox.height
-                    
-                    # Score based on preference
-                    if prefer == "centered":
-                        # Distance from center (0-1, lower is better)
-                        dist_from_center = ((face_cx - 0.5) ** 2 + (face_cy - 0.5) ** 2) ** 0.5
-                        score = confidence * (1 - dist_from_center) * (1 + face_size)
-                    elif prefer == "largest":
-                        score = confidence * face_size * 10
-                    else:  # most_active or default
-                        score = confidence * face_size * (1 + 0.5 * (1 - abs(face_cx - 0.5)))
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_frame = frame.copy()
+                    score = detection.score[0] if detection.score else 0.5
+                    size = bbox.width * bbox.height
+                    cx = bbox.xmin + bbox.width / 2
+                    cy = bbox.ymin + bbox.height / 2
+                    faces.append({
+                        'size': size,
+                        'confidence': score,
+                        'cx': cx,
+                        'cy': cy,
+                        'bbox': bbox
+                    })
+                
+                # Sort by size descending
+                faces.sort(key=lambda x: x['size'], reverse=True)
+                
+                primary_face = faces[0]
+                
+                # Penalty for multiple significant faces
+                multi_face_penalty = 1.0
+                if num_faces > 1:
+                    secondary_size = faces[1]['size']
+                    # If second face is > 50% of the primary face size, it's a crowded shot
+                    if secondary_size > (primary_face['size'] * 0.5):
+                        multi_face_penalty = 0.3  # Heavy penalty
+                    else:
+                        multi_face_penalty = 0.8  # Slight penalty for background faces
+                
+                # Calculate Base Score
+                # 1. Size (Exponential reward for close-ups)
+                size_score = primary_face['size'] ** 2 
+                
+                # 2. Centrality (Gaussian-like curve preferred over linear)
+                dist_from_center = ((primary_face['cx'] - 0.5) ** 2 + (primary_face['cy'] - 0.5) ** 2) ** 0.5
+                centrality_score = 1 - min(dist_from_center, 1)
+                
+                # 3. Confidence
+                conf_score = primary_face['confidence']
+                
+                if prefer == "centered":
+                    final_score = (size_score * 10) * (centrality_score * 2) * conf_score * multi_face_penalty
+                elif prefer == "largest":
+                    final_score = (size_score * 20) * conf_score * multi_face_penalty
+                else:
+                    final_score = (size_score * 10) * conf_score * multi_face_penalty
+                
+                if final_score > best_score:
+                    best_score = final_score
+                    best_frame = frame.copy()
             
             frame_idx += 1
     
     cap.release()
     
-    # Fallback: use middle frame if no face found
+    # Fallback: use middle frame if no face found or score is too low
     if best_frame is None:
-        logger.warning("[Thumbnail] No face found, using middle frame")
+        logger.warning("[Thumbnail] No suitable face found, using middle frame")
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames // 2)
         ret, best_frame = cap.read()
         cap.release()
     
-    logger.info(f"[Thumbnail] Best frame found with score {best_score:.3f}")
+    logger.info(f"[Thumbnail] Best frame found with score {best_score:.4f}")
     return best_frame
 
 

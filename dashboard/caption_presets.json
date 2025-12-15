@@ -12,5 +12,19 @@
     "cfg_bold": true,
     "cfg_italic": true,
     "cfg_all_caps": true
+  },
+  "LiteStoryChannel-Orange": {
+    "cfg_font_family": "Komika Axis",
+    "cfg_font_size": 140,
+    "cfg_line_color": "#f98a15",
+    "cfg_word_color": "#000000",
+    "cfg_max_words": 2,
+    "cfg_outline_width": 10,
+    "cfg_outline_color": "#ffffff",
+    "cfg_margin_v": 350,
+    "cfg_position": "bottom_center",
+    "cfg_bold": true,
+    "cfg_italic": true,
+    "cfg_all_caps": true
   }
 }

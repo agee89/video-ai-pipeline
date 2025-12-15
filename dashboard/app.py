@@ -129,6 +129,11 @@ if "cfg_font_family" not in st.session_state:
     for k, v in get_default_settings().items():
         st.session_state[k] = v
 
+# Ensure Thumbnail defaults are also initialized (Fix for partial preset saving)
+if "thumb_font" not in st.session_state:
+    for k, v in get_thumb_default_settings().items():
+        st.session_state[k] = v
+
 # Load immediately
 
 
@@ -159,7 +164,7 @@ st.markdown("""
     }
     .block-container {
         padding-top: 1rem;
-        max-width: 950px; /* Constrain width for proportionality */
+        max-width: 790px; /* Constrain width for proportionality */
         margin: auto;
     }
 </style>

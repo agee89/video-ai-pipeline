@@ -502,10 +502,20 @@ git log --oneline -10
 | all_caps | true | Uppercase text |
 | max_words_per_line | 3 | Words per line |
 | bold | true | Bold text |
-| outline_width | 3 | Outline thickness |
+| outline_width | 3 | Outline thickness (scaled 0.5x internally) |
 | shadow_offset | 2 | Shadow distance |
 | margin_v | 640 | Vertical margin (640 = 2/3 from top) |
 | position | bottom_center | Position on screen |
+
+## Streamlit Dashboard
+**URL**: `http://localhost:8501`
+
+**Latest Features**:
+1. **Clean UI**: Transcript hidden by default (toggle enabled).
+2. **Simplified Thumbnail**: Auto-uses YouTube title, no manual input.
+3. **Smart Preview**: Calibrated visual scaling (Font ~0.6x, Outline 2x in CSS) to match backend output.
+4. **Config**: Settings grouped in collapsible expanders (default: closed).
+5. **Presets**: JSON-based preset management for Captions & Thumbnails.
 
 ## Troubleshooting
 
