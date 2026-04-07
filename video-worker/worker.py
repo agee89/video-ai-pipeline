@@ -17,6 +17,7 @@ try:
     from modules.image_watermark import add_image_watermark_to_video
     from modules.video_merge import merge_videos
     from modules.image_to_video import create_video_from_images
+    from modules.overlay_notification import process_overlay_notification
 except ImportError as e:
     logging.error(f"Failed to import modules: {e}")
     raise
@@ -111,24 +112,24 @@ def process_video_job(job_data):
         
         # Step 2: Portrait conversion (optional)
         if job_data.get("portrait", False):
-            if job_data.get("face_tracking", False):
-                sensitivity = job_data.get("tracking_sensitivity", 5)
-                camera_smoothing = job_data.get("camera_smoothing", 0.15)
-                zoom_threshold = job_data.get("zoom_threshold", 20.0)
-                zoom_level = job_data.get("zoom_level", 1.15)
-                
-                logger.info(f"Step 2: Converting to portrait with face tracking (sens={sensitivity}, smooth={camera_smoothing}, zoom_th={zoom_threshold}, zoom_lvl={zoom_level})...")
+            # FACE TRACKING ENGINE (V1)
+            sensitivity = job_data.get("tracking_sensitivity", 5)
+            
+            logger.info(f"Step 2: Converting to portrait [Face Tracking] (sens={sensitivity})...")
+            try:
                 clip_path = reframe_to_portrait_with_face_tracking(
                     clip_path, 
                     f"{job_id}_portrait", 
-                    sensitivity, 
-                    camera_smoothing,
-                    zoom_threshold, 
-                    zoom_level
+                    sensitivity=sensitivity,
+                    camera_smoothing=job_data.get("camera_smoothing", 0.15),
+                    zoom_threshold=job_data.get("zoom_threshold", 20.0),
+                    zoom_level=job_data.get("zoom_level", 1.15)
                 )
-            else:
-                logger.info("Step 2: Converting to portrait (center crop)...")
+            except Exception as e:
+                logger.error(f"Portrait conversion failed: {e}")
+                logger.info("Falling back to simple center crop...")
                 clip_path = reframe_to_portrait(clip_path, f"{job_id}_portrait")
+            
             logger.info(f"Portrait conversion complete: {clip_path}")
         else:
             logger.info("Step 2: Skipping portrait conversion (not requested)")
@@ -150,20 +151,14 @@ def process_video_job(job_data):
                 os.remove(f)
                 logger.info(f"Deleted: {f}")
         
-        # Build result
-        result = {
+        # Build result (Simplified Flat Structure wrapped in List)
+        result = [{
             "job_id": job_id,
             "clip_number": job_data.get("clip_number"),
-            "clip": {
-                "url": upload_result['url'],
-                "url_external": upload_result['url_external'],
-                "start_time": start_time,
-                "end_time": end_time,
-                "duration": duration,
-                "portrait": job_data.get("portrait", False),
-                "face_tracking": job_data.get("face_tracking", False)
-            }
-        }
+            "channel_name": job_data.get("channel_name"),
+            "youtube_url": job_data.get("youtube_url"),
+            "url_clip_video": upload_result['url']
+        }]
         
         redis_client.set(f"job:{job_id}:result", json.dumps(result))
         redis_client.set(f"job:{job_id}:status", "completed")
@@ -223,16 +218,12 @@ def process_caption_job(job_data):
             os.remove(caption_result["output_path"])
             logger.info(f"Deleted: {caption_result['output_path']}")
         
-        # Build result
-        result = {
+        # Build result (Simplified Flat Structure wrapped in List)
+        result = [{
             "job_id": job_id,
-            "caps_number": job_data.get("caps_number"),
-            "video": {
-                "url": upload_result['url'],
-                "url_external": upload_result['url_external']
-            },
-            "transcript": caption_result.get("transcript", "")
-        }
+            "capt_number": job_data.get("capt_number"),
+            "url_capt_video": upload_result['url']
+        }]
         
         redis_client.set(f"job:{job_id}:result", json.dumps(result))
         redis_client.set(f"job:{job_id}:status", "completed")
@@ -456,17 +447,12 @@ def process_thumbnail_job(job_data):
         if os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
         
-        # Build result
-        result = {
+        # Build result (Simplified Flat Structure wrapped in List)
+        result = [{
             "job_id": job_id,
             "thumbnail_number": job_data.get("thumbnail_number"),
-            "thumbnail": {
-                "url": upload_result["url"],
-                "url_external": upload_result["url_external"],
-                "size": size,
-                "format": output_format
-            }
-        }
+            "url_thumbnail": upload_result['url']
+        }]
         
         redis_client.set(f"job:{job_id}:result", json.dumps(result))
         redis_client.set(f"job:{job_id}:status", "completed")
@@ -734,6 +720,68 @@ def process_image_to_video_job(job_data):
     except Exception as e:
         error_msg = f"{str(e)}\n{traceback.format_exc()}"
         logger.error(f"Error processing image to video job {job_id}: {error_msg}")
+        redis_client.set(f"job:{job_id}:error", error_msg)
+
+
+def process_overlay_notification_job(job_data):
+    """Process overlay notification job"""
+    job_id = job_data["job_id"]
+    logger.info(f"Processing overlay notification job: {job_id}")
+    
+    try:
+        redis_client.set(f"job:{job_id}:status", "processing")
+        
+        video_url = job_data["video_url"]
+        overlay_url = job_data["overlay_url"]
+        start_time = job_data.get("start_time")
+        position = job_data.get("position")
+        resize = job_data.get("resize")
+        chroma_key = job_data.get("chroma_key")
+        
+        logger.info(f"Video URL: {video_url}")
+        logger.info(f"Overlay URL: {overlay_url}")
+        
+        # Process overlay
+        result_data = process_overlay_notification(
+            video_url=video_url,
+            overlay_url=overlay_url,
+            job_id=job_id,
+            start_time=start_time,
+            position=position,
+            resize=resize,
+            chroma_key=chroma_key
+        )
+        
+        # Upload video
+        logger.info("Uploading video with overlay...")
+        upload_result = upload_to_storage(result_data["output_path"], f"{job_id}.mp4")
+        logger.info(f"Uploaded - n8n: {upload_result['url']}, External: {upload_result['url_external']}")
+        
+        # Cleanup local file
+        if os.path.exists(result_data["output_path"]):
+            os.remove(result_data["output_path"])
+        
+        # Build result
+        result = {
+            "job_id": job_id,
+            "video": {
+                "url": upload_result['url'],
+                "url_external": upload_result['url_external']
+            },
+            "details": result_data.get("details")
+        }
+        
+        redis_client.set(f"job:{job_id}:result", json.dumps(result))
+        redis_client.set(f"job:{job_id}:status", "completed")
+        
+        if job_data.get("callback_url"):
+            send_callback(job_data["callback_url"], result)
+            
+        logger.info(f"Overlay notification job {job_id} completed successfully")
+        
+    except Exception as e:
+        error_msg = f"{str(e)}\\n{traceback.format_exc()}"
+        logger.error(f"Error processing overlay notification job {job_id}: {error_msg}")
         redis_client.set(f"job:{job_id}:status", "failed")
         redis_client.set(f"job:{job_id}:error", error_msg)
 
@@ -810,6 +858,14 @@ def main():
                 process_image_to_video_job(job_data)
                 continue
             
+            # Check for overlay notification jobs
+            overlay_notification_result = redis_client.brpop("overlay_notification_jobs", timeout=1)
+            if overlay_notification_result:
+                _, job_json = overlay_notification_result
+                job_data = json.loads(job_json)
+                process_overlay_notification_job(job_data)
+                continue
+                
             # Small sleep if no jobs
             time.sleep(0.5)
                 

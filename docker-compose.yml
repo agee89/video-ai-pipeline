@@ -14,6 +14,8 @@ services:
     volumes:
       - ./video-api:/app
       - ./storage/output:/app/output
+      - ./video-worker/modules:/app/modules
+      - ./video-worker/fonts:/app/fonts:ro
     ports:
       - "8000:8000"
     depends_on:

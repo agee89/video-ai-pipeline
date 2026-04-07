@@ -113,76 +113,45 @@ Clip video dari YouTube dengan opsi portrait + face tracking.
 > Detail: [FACE_TRACKING.md](./FACE_TRACKING.md)
 
 ### POST /add_video_source
-Tambahkan text overlay sumber video (channel name) pada video.
+Tambahkan text overlay sumber video (channel name) dan logo pada video. **Synchronous**.
 
 ```json
 {
   "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
   "channel_name": "MyYoutube Channel",
-  "prefix": "FullVideo:",
-  "text_style": {
-    "font_family": "Montserrat",
-    "font_size": 40,
-    "color": "#FFFFFF",
-    "bold": true
-  },
-  "background": {
-    "enabled": true,
-    "color": "rgba(0, 0, 0, 0.5)",
-    "padding": 20
-  },
-  "position": {
-    "position": "bottom_right",
-    "margin_x": 30,
-    "margin_y": 30
-  }
+  "prefix": "Source:",
+  "logo_url": "http://minio-video:9002/logos/logo.png",
+  "logo_scale": 1.2,
+  "logo_scale": 1.2,
+  "text_style": { "font_family": "Montserrat", "bold": true },
+  "position": { "position": "bottom_right" }
 }
 ```
 
 **Position Options:** `top_left`, `top_right`, `bottom_left`, `bottom_right` (default)
-
-**Minimal Request:**
-```json
-{
-  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
-  "channel_name": "MyYoutube Channel"
-}
-```
-Output: Video dengan text "FullVideo: MyYoutube Channel" di pojok kanan bawah.
+**Logo:** `logo_url` (optional), `logo_scale` (scale relative to text height)
+**Spacing:** `line_spacing` (optional, default 8)
+**Alignment:** `logo_offset_y` (optional, default 0, +/- pixels), `logo_spacing` (optional, default 10)
+**Margins:** Can use pixels (e.g., 20) or percentage (e.g., "5%") for `margin_x` and `margin_y`.
 
 ### POST /add_image_watermark
-Tambahkan watermark gambar (logo) pada video.
+Tambahkan watermark gambar (logo) pada video. **Synchronous**.
 
 ```json
 {
   "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
   "image_url": "http://minio-video:9002/logos/logo.png",
-  "size": {
-    "scale": 0.3
-  },
-  "position": {
-    "position": "bottom_right",
-    "margin_x": 20,
-    "margin_y": 20
-  },
+  "size": { "scale": 0.3 },
+  "position": { "position": "bottom_right", "margin_x": 20, "margin_y": 20 },
   "opacity": 0.8
 }
 ```
 
 **Size Options:** `width`, `height`, `scale` (e.g. 0.3 = 30%)
-
 **Position Options:** `top_left`, `top_center`, `top_right`, `center`, `bottom_left`, `bottom_center`, `bottom_right`
 
-**Minimal Request:**
-```json
-{
-  "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
-  "image_url": "http://minio-video:9002/logos/logo.png"
-}
-```
-
 ### POST /merge_videos
-Gabungkan beberapa video menjadi satu.
+Gabungkan beberapa video menjadi satu. **Synchronous**.
 
 ```json
 {
@@ -219,6 +188,42 @@ Buat video dari gambar.
 - `motion`: Ken Burns effect
   - `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `zoom_in_pan_right`, `zoom_in_pan_left`
 - `motion_intensity`: Intensitas zoom/pan 0.1-1.0 (default: 0.3)
+
+### POST /trim
+Trim video secara synchronous.
+
+```json
+{
+  "video_url": "http://minio-nca:9000/video.mp4",
+  "start": "00:00:05",
+  "end": "00:00:10"
+}
+```
+
+**Parameters**: `start` & `end` (HH:MM:SS atau seconds), `video_codec`, `audio_bitrate`, dll.
+**Response**: List of objects containing `response` URL.
+
+### POST /compose
+Video composer untuk FFmpeg commands kompleks.
+
+```json
+{
+  "inputs": [{ "url": "...", "options": ["-ss", "10"]}],
+  "filter_complex": "[0:v][1:v]hstack[out]",
+  "output_args": ["-map", "[out]"]
+}
+```
+
+### POST /add_video_source
+Tambah source overlay identity.
+
+```json
+{
+  "video_url": "...",
+  "channel_name": "MyChannel",
+  "position": { "position": "bottom_right" }
+}
+```
 
 ### POST /add_captions
 Tambahkan caption ke video menggunakan Whisper.

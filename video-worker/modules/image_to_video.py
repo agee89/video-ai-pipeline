@@ -29,7 +29,10 @@ def download_file(url: str, output_path: str) -> str:
     # Handle misconfigured n8n URL
     internal_url = re.sub(r'http://n8n-ncat:5678/', 'http://minio-storage:9002/', internal_url)
     
-    internal_url = internal_url.replace("minio-video", "minio")
+    # Fix: Ensure we use the correct service name 'minio-storage'
+    # The error showed "host='minio'", so we must catch that and direct it to 'minio-storage'
+    internal_url = internal_url.replace("http://minio:9002/", "http://minio-storage:9002/")
+    internal_url = internal_url.replace("minio-video", "minio-storage")
     
     logger.info(f"Downloading: {internal_url}")
     
@@ -142,7 +145,16 @@ def create_video_from_images(
     try:
         # Download all images
         for i, img in enumerate(images):
-            ext = img["image_url"].split(".")[-1].split("?")[0] or "jpg"
+            # Robust extension extraction
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(img["image_url"])
+                path_no_params = parsed.path
+                ext = os.path.splitext(path_no_params)[1].lower().strip(".")
+                if not ext or len(ext) > 4 or "/" in ext:
+                    ext = "jpg"
+            except:
+                ext = "jpg"
             image_path = f"{output_dir}/{job_id}_img_{i}.{ext}"
             download_file(img["image_url"], image_path)
             image_paths.append({

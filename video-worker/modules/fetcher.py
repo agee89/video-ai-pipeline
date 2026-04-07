@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger("fetcher")
 
-def download_video(youtube_url: str, job_id: str, start_time: float = None, end_time: float = None) -> str:
+def download_video(youtube_url: str, job_id: str, start_time: float = None, end_time: float = None, output_path: str = None) -> str:
     """
     Download video dari YouTube.
     Jika start_time/end_time diberikan, coba partial download dulu.
@@ -15,7 +15,8 @@ def download_video(youtube_url: str, job_id: str, start_time: float = None, end_
     output_dir = "/app/output"
     os.makedirs(output_dir, exist_ok=True)
     
-    output_path = f"{output_dir}/{job_id}_original.mp4"
+    if output_path is None:
+        output_path = f"{output_dir}/{job_id}_original.mp4"
     
     # If time range specified, try partial download first
     if start_time is not None and end_time is not None:

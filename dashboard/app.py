@@ -18,6 +18,7 @@ WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
 # --- Presets Logic ---
 PRESETS_FILE = "caption_presets.json"
 THUMB_PRESETS_FILE = "thumbnail_presets.json"
+CAMERA_PRESETS_FILE = "camera_presets.json"
 
 def get_default_settings():
     return {
@@ -117,6 +118,7 @@ def delete_thumb_preset(name):
         with open(THUMB_PRESETS_FILE, "w") as f:
             json.dump(presets, f, indent=2)
 
+
 def apply_thumb_preset(preset_name):
     presets = load_thumb_presets()
     if preset_name in presets:
@@ -124,14 +126,78 @@ def apply_thumb_preset(preset_name):
         for k, v in data.items():
             st.session_state[k] = v
 
+# --- Camera Presets Logic ---
+def get_camera_default_settings():
+    return {
+        "clipper_sens": 5,
+        "clipper_smooth": 0.25,
+        "clipper_zoom_th": 20.0,
+        "clipper_zoom_lvl": 1.15
+    }
+
+def load_camera_presets():
+    # If file doesn't exist, create it with default populated presets (Migration from hardcode)
+    if not os.path.exists(CAMERA_PRESETS_FILE):
+        defaults = {
+            "🎬 Cinematic Interview (Stable)": {
+                "clipper_sens": 3, "clipper_smooth": 0.10, "clipper_zoom_th": 25.0, "clipper_zoom_lvl": 1.15
+            },
+            "🎙️ Standard Podcast (Balanced)": {
+                "clipper_sens": 5, "clipper_smooth": 0.15, "clipper_zoom_th": 20.0, "clipper_zoom_lvl": 1.15
+            },
+            "⚡ Dynamic / Chaos (Fast)": {
+                "clipper_sens": 8, "clipper_smooth": 0.30, "clipper_zoom_th": 15.0, "clipper_zoom_lvl": 1.25
+            }
+        }
+        try:
+            with open(CAMERA_PRESETS_FILE, "w") as f:
+                json.dump(defaults, f, indent=2)
+            return defaults
+        except:
+            return {}
+            
+    try:
+        with open(CAMERA_PRESETS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_camera_preset(name):
+    data = {}
+    defaults = get_camera_default_settings()
+    for k in defaults.keys():
+        if k in st.session_state:
+            data[k] = st.session_state[k]
+    
+    presets = load_camera_presets()
+    presets[name] = data
+    with open(CAMERA_PRESETS_FILE, "w") as f:
+        json.dump(presets, f, indent=2)
+
+def delete_camera_preset(name):
+    presets = load_camera_presets()
+    if name in presets:
+        del presets[name]
+        with open(CAMERA_PRESETS_FILE, "w") as f:
+            json.dump(presets, f, indent=2)
+
+def apply_camera_preset(preset_data):
+    for k, v in preset_data.items():
+        st.session_state[k] = v
+
 # Initialize Session State with Defaults if new
 if "cfg_font_family" not in st.session_state:
     for k, v in get_default_settings().items():
         st.session_state[k] = v
 
-# Ensure Thumbnail defaults are also initialized (Fix for partial preset saving)
+# Ensure Thumbnail defaults
 if "thumb_font" not in st.session_state:
     for k, v in get_thumb_default_settings().items():
+        st.session_state[k] = v
+
+# Ensure Camera defaults
+if "clipper_sens" not in st.session_state:
+    for k, v in get_camera_default_settings().items():
         st.session_state[k] = v
 
 # Load immediately
@@ -362,7 +428,7 @@ def fetch_transcript(url):
         except Exception as e:
              print(f"WARNING: Method 2 failed: {e}", flush=True)
             
-        return None, "Could not fetch transcript from any source (YouTube API blocked?)"
+        return None, "NO_TRANSCRIPT_FOUND" # Fixed: Return code for UI to handle
 
     except Exception as e:
         return None, str(e)
@@ -391,14 +457,20 @@ with st.container():
                     "thumbnail": info.get('thumbnail'),
                     "video_url": youtube_url # Store for thumbnail reuse
                 }
+                st.session_state['clipper_channel'] = channel_name # Force Widget Update
                 
                 transcript_text, error_msg = fetch_transcript(youtube_url)
                 if transcript_text:
                     st.session_state['transcript_text'] = transcript_text
+                    st.session_state['clipper_transcript'] = transcript_text # Force Widget Update
                     st.success(f"Transcript loaded! ({len(transcript_text.splitlines())} lines)")
                 else:
                     st.session_state['transcript_text'] = ""
-                    st.warning(f"Metadata loaded, but transcript failed: {error_msg}")
+                    st.session_state['clipper_transcript'] = "" # Force Widget Clear
+                    if error_msg == "NO_TRANSCRIPT_FOUND":
+                         st.warning("⚠️ **Transcript Kosong:** Video ini tidak memiliki subtitle/CC (manual maupun auto-generated) dari YouTube. Silakan gunakan video lain.")
+                    else:
+                         st.warning(f"Metadata loaded, but transcript failed: {error_msg}")
             else:
                 st.error("Failed to load video info.")
 
@@ -425,16 +497,55 @@ if st.session_state['meta_data']:
         transcript = st.text_area("Video Transcript", value="", height=250, key="clipper_transcript")
     
     with st.expander("⚙️ Advanced Camera Settings", expanded=False):
+        
+        # --- Camera Preset Management ---
+        with st.container():
+            st.markdown("##### 💾 Camera Presets")
+            cam_presets = load_camera_presets()
+            cam_preset_names = ["-- Select Preset --"] + list(cam_presets.keys())
+
+            c_cp1, c_cp2, c_cp3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+            
+            with c_cp1:
+                sel_cam_preset = st.selectbox("Load Camera Preset", cam_preset_names, label_visibility="collapsed", key="cam_preset_loader")
+            with c_cp2:
+                if st.button("Load", use_container_width=True, key="btn_load_cam_preset"):
+                    if sel_cam_preset and sel_cam_preset != "-- Select Preset --":
+                        apply_camera_preset(cam_presets[sel_cam_preset])
+                        st.rerun()
+            with c_cp3:
+                 if st.button("Delete", use_container_width=True, key="btn_del_cam_preset"):
+                    if sel_cam_preset and sel_cam_preset != "-- Select Preset --":
+                        delete_camera_preset(sel_cam_preset)
+                        st.success(f"Deleted '{sel_cam_preset}'")
+                        time.sleep(0.5)
+                        st.rerun()
+
+            # Save New
+            c_cps1, c_cps2 = st.columns([3, 1], vertical_alignment="bottom")
+            with c_cps1:
+                new_cam_preset_name = st.text_input("Save Current Settings As", placeholder="New Preset Name...", key="new_cam_preset_name")
+            with c_cps2:
+                if st.button("Save", use_container_width=True, key="btn_save_cam_preset"):
+                    if new_cam_preset_name:
+                        save_camera_preset(new_cam_preset_name)
+                        st.success("Saved!")
+                        time.sleep(0.5)
+                        st.rerun()
+
+        st.markdown("---")
+        st.markdown("##### 🔧 Manual Adjustments")
+
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Face Tracking**")
-            sensitivity = st.slider("Sensitivity", 1, 10, 5, help="Higher = Faster switching", key="clipper_sens")
-            zoom_threshold = st.slider("Zoom Threshold", 5.0, 30.0, 20.0, help="Lower = Easier zoom", key="clipper_zoom_th")
+            sensitivity = st.slider("Sensitivity", 1, 10, key="clipper_sens", help="Higher = Faster switching")
+            zoom_threshold = st.slider("Zoom Threshold", 5.0, 30.0, key="clipper_zoom_th", help="Lower = Easier zoom")
             
         with col2:
             st.markdown("**Camera Motion**")
-            smoothing = st.slider("Smoothing", 0.05, 0.5, 0.25, help="Higher = Faster movement", key="clipper_smooth")
-            zoom_level = st.slider("Zoom Amount", 1.0, 1.5, 1.15, help="1.15 = 15% Zoom", key="clipper_zoom_lvl")
+            smoothing = st.slider("Smoothing", 0.05, 0.5, key="clipper_smooth", help="Higher = Faster movement")
+            zoom_level = st.slider("Zoom Amount", 1.0, 1.5, key="clipper_zoom_lvl", help="1.15 = 15% Zoom")
 
     # --- 4. CAPTION SETTINGS & PREVIEW ---
 
@@ -985,17 +1096,8 @@ if st.session_state.get('meta_data'):
             t_safe_family = ''.join(c for c in t_font if c.isalnum()) + "Thumb"
             
             # Flush-left CSS to avoid indentation issues
-            t_custom_css = f"""
-<style>
-@font-face {{
-    font-family: '{t_safe_family}';
-    src: url(data:{t_font_mime};base64,{t_font_base64}) format('{ "opentype" if "otf" in t_font_mime else "truetype" }');
-    font-weight: normal;
-    font-style: normal;
-    font-display: block; 
-}}
-</style>
-"""
+            # Flush-left CSS to avoid indentation issues
+            t_custom_css = f"<style>@font-face {{font-family: '{t_safe_family}'; src: url(data:{t_font_mime};base64,{t_font_base64}) format('{ 'opentype' if 'otf' in t_font_mime else 'truetype' }'); font-weight: normal; font-style: normal; font-display: block;}}</style>"
             st.markdown(t_custom_css, unsafe_allow_html=True)
 
         # Style Calcs
@@ -1006,13 +1108,7 @@ if st.session_state.get('meta_data'):
         p_shadow = f"2.5px 2.5px 0px {t_shadow_color}"
         
         # Max Lines (Line Clamp logic)
-        p_line_clamp_css = f"""
-            display: -webkit-box;
-            -webkit-line-clamp: {pos_max_lines};
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        """
+        p_line_clamp_css = f"display: -webkit-box; -webkit-line-clamp: {pos_max_lines}; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;"
 
         # Font Weight Mapping (Match Section 4: Use strings)
         # Detailed logic: 
@@ -1077,7 +1173,7 @@ if st.session_state.get('meta_data'):
              scaled_grad_h = int(bg_grad_height * THUMB_SCALE)
              # Gradient is typically bottom-up. 
              # FIX: Use a stronger start (30%) to simulate "pekat" (intense) look requested by user
-             gradient_html = f"""<div style="position: absolute; bottom: 0; left: 0; width: 100%; height: {scaled_grad_h}px; background: linear-gradient(to top, {bg_color} 50%, transparent 100%); z-index: 1;"></div>"""
+             gradient_html = f"<div style='position: absolute; bottom: 0; left: 0; width: 100%; height: {scaled_grad_h}px; background: linear-gradient(to top, {bg_color} 50%, transparent 100%); z-index: 1;'></div>"
 
         # FIX: Update shadow scale (10px * 0.25 = 2.5px)
         # p_shadow = f"2.5px 2.5px 0px {t_shadow_color}" # Already calculated above
@@ -1085,15 +1181,7 @@ if st.session_state.get('meta_data'):
         # Render HTML
         # FIX: Fixed Width Container (270px) to ensure font size (px) is proportional to 0.25 scale of 1080p
         # FIX: Added p_line_clamp_css and p_weight
-        preview_html_template = f"""
-<div style="position: relative; width: 270px; min-width: 270px; height: {int(270 * 16/9)}px; margin: 0 auto; background-image: url('{meta['thumbnail']}'); background-size: cover; background-position: center; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; justify-content: {p_align}; align-items: center; border: 2px solid #ddd;">
-    {gradient_html}
-    <div style="z-index: 2; margin-top: {p_margin_top}; margin-bottom: {p_margin_bottom}; text-align: center; {text_bg_css} {box_padding_css}">
-        <p style="font-family: '{t_safe_family}', sans-serif; font-size: {p_font_size}px; font-weight: {p_weight}; color: {t_color}; line-height: {t_line_height}; letter-spacing: {p_letter_spacing}; margin: 0; {p_stroke_css} text-shadow: {p_shadow}; white-space: pre-wrap; {p_line_clamp_css}">{p_text}</p>
-    </div>
-    <p style="font-size: 10px; color: rgba(255,255,255,0.7); position: absolute; top: 5px; left: 5px; margin: 0; text-shadow: 1px 1px 2px black; z-index: 3;">Preview (Fixed Scale)</p>
-</div>
-"""
+        preview_html_template = f"<div style='position: relative; width: 270px; min-width: 270px; height: {int(270 * 16/9)}px; margin: 0 auto; background-image: url(\"{meta['thumbnail']}\"); background-size: cover; background-position: center; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; justify-content: {p_align}; align-items: center; border: 2px solid #ddd;'>{gradient_html}<div style='z-index: 2; margin-top: {p_margin_top}; margin-bottom: {p_margin_bottom}; text-align: center; {text_bg_css} {box_padding_css}'><p style='font-family: \"{t_safe_family}\", sans-serif; font-size: {p_font_size}px; font-weight: {p_weight}; color: {t_color}; line-height: {t_line_height}; letter-spacing: {p_letter_spacing}; margin: 0; {p_stroke_css} text-shadow: {p_shadow}; white-space: pre-wrap; {p_line_clamp_css}'>{p_text}</p></div><p style='font-size: 10px; color: rgba(255,255,255,0.7); position: absolute; top: 5px; left: 5px; margin: 0; text-shadow: 1px 1px 2px black; z-index: 3;'>Preview (Fixed Scale)</p></div>"
         
         st.markdown(preview_html_template, unsafe_allow_html=True)
         
@@ -1119,10 +1207,10 @@ if st.session_state.get('meta_data'):
                 "parameters": {
                     "portrait": True,
                     "face_tracking": True,
-                    "tracking_sensitivity": sensitivity,
-                    "camera_smoothing": smoothing,
-                    "zoom_threshold": zoom_threshold,
-                    "zoom_level": zoom_level,
+                    "tracking_sensitivity": st.session_state.get('clipper_sens', 5),
+                    "camera_smoothing": st.session_state.get('clipper_smooth', 0.15),
+                    "zoom_threshold": st.session_state.get('clipper_zoom_th', 20.0),
+                    "zoom_level": st.session_state.get('clipper_zoom_lvl', 1.15),
                 },
                 # Caption Params
                 "caption_conf": {

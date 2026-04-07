@@ -99,7 +99,9 @@ curl -X POST http://host.docker.internal:8000/process_video \
     "portrait": true,
     "face_tracking": true,
     "tracking_sensitivity": 8,
-    "camera_smoothing": 0.25
+    "clip_number": 1,
+    "channel_name": "My Channel",
+    "callback_url": "http://optional-webhook-url"
   }'
 ```
 
@@ -112,22 +114,28 @@ curl -X POST http://host.docker.internal:8000/process_video \
 | `end_time` | string | required | Format: `mm:ss` or `hh:mm:ss` |
 | `portrait` | bool | false | Convert to 9:16 portrait |
 | `face_tracking` | bool | false | Enable active speaker tracking |
+| `clip_number` | int | null | Passthrough ID for tracking |
+| `channel_name` | string | null | Passthrough Channel Name |
 | `tracking_sensitivity` | int | 5 | 1-10 (1=stay longer, 10=switch faster) |
 | `camera_smoothing` | float | 0.25 | 0.05-0.5 (higher = faster camera movement) |
 | `zoom_threshold` | float | 20.0 | 5.0-30.0 (Lip activity threshold: higher = less sensitive) |
 | `zoom_level` | float | 1.15 | 1.0-1.5 (Target zoom factor: 1.15 = 15% zoom) |
+| `split_screen` | bool | false | **Dynamic Stack Layout** (2-Person Split Screen) |
+| `split_threshold` | float | 0.5 | 0.0-1.0 (Threshold to trigger split mode) |
+| `callback_url` | string | null | Optional webhook URL for job completion |
 
 ### Face Tracking Parameters Guide
 
 #### How Face Tracking Works
 
 1. **Initial Scan**: Sistem scan seluruh video untuk memetakan wajah dan mendeteksi perubahan scene (*Two-Pass Analysis*)
-2. **Scene Cut Detection**: Kamera otomatis "snap" saat adegan berganti (anti-swipe effect)
-3. **Stabilized Lock**: Kamera stabil dengan logika "Anchor", tidak bergetar mengikuti noise deteksi
-4. **Hybrid Detection**: Face Detection (jarak jauh) + Face Mesh (lip tracking)
-5. **Lock Mode**: Saat fokus pada speaker aktif, kamera tetap terkunci
-6. **Dynamic Zoom**: Otomatis zoom-in (customizable) saat tertawa/terkejut/speaking aktif
-7. **Lost Face Recovery**: Jika wajah hilang 0.5 detik, otomatis switch ke wajah yang terlihat
+2. **Global Timeline Stabilization**: Analisa timeline secara global untuk mengisi gap kecil (<1s) dan membuang noise singkat (<2s)
+3. **Dual Lip Activity Trigger**: Split Screen hanya aktif jika **KEDUA** orang terdeteksi bicara/tertawa (bukan hanya deteksi wajah)
+4. **Scene Cut Detection**: Kamera otomatis "snap" saat adegan berganti (anti-swipe effect)
+5. **Stabilized Lock**: Kamera stabil dengan logika "Anchor", tidak bergetar mengikuti noise deteksi
+6. **Smart Dominance Check**: Mencegah split jika satu orang sangat dominan
+7. **Dynamic Zoom**: Otomatis zoom-in (customizable) saat tertawa/terkejut/speaking aktif
+8. **Full HD Output**: Output otomatis di-upscale ke 1080x1920 (High Quality Portrait)
 
 > Dokumentasi teknis lengkap: [FACE_TRACKING.md](./FACE_TRACKING.md)
 
@@ -171,6 +179,19 @@ Mengontrol perilaku Dynamic Zoom.
     *   1.15: Zoom 15% (subtle).
     *   1.50: Zoom 50% (extreme close-up).
 
+#### `split_screen` & `split_threshold`
+
+Mode **Dynamic Stack** mirip dengan gaya video podcast viral/wawancara.
+
+*   **`split_screen` (Default: false)**:
+    *   Jika `true`, sistem akan melacak **2 Wajah** sekaligus dengan metode **Global Analysis**.
+    *   **Logic**: Split hanya aktif jika `LipActivity(Person1) > Threshold` **DAN** `LipActivity(Person2) > Threshold` (Keduanya Bicara/Tertawa).
+    *   **Anti-Jitter**: Menerapkan stabilisasi global untuk mencegah "flicker" atau potong-potong cepat.
+*   **`split_threshold` (Default: 0.5)**:
+    *   Sekarang lebih relevan ke **Lip Sensitivity**.
+    *   Lower (0.3) = Lebih sensitif terhadap gerakan bibir kecil.
+    *   Higher (0.8) = Hanya split saat tertawa lebar/teriak bareng.
+
 #### Rekomendasi Kombinasi
 
 | Skenario | sensitivity | smoothing | Catatan |
@@ -192,7 +213,9 @@ Mengontrol perilaku Dynamic Zoom.
   "tracking_sensitivity": 5,
   "camera_smoothing": 0.15,
   "zoom_threshold": 20.0,
-  "zoom_level": 1.15
+  "zoom_level": 1.15,
+  "split_screen": true,
+  "split_threshold": 0.5
 }
 ```
 
@@ -229,7 +252,9 @@ curl -X POST http://host.docker.internal:8000/add_captions \
 | `video_url` | string | required | Video URL (S3/HTTP) |
 | `language` | string | "id" | Whisper Language Code |
 | `model` | string | "medium" | Whisper Model Size |
+| `capt_number` | int | null | Passthrough ID |
 | `settings` | object | {} | Custom Styling |
+| `callback_url` | string | null | Optional. If set, runs async. |
 
 ### Supported Settings (within `settings` object)
 
@@ -279,6 +304,18 @@ curl -X POST http://host.docker.internal:8000/add_captions \
 | `small` | 244 MB | ~2 GB | Better | Medium |
 | `medium` | 769 MB | ~5 GB | Best for ID | Slow |
 | `large` | 1.5 GB | ~10 GB | Best | Slowest |
+
+### Response Example (Synchronous)
+
+```json
+[
+  {
+    "job_id": "caption_12345678",
+    "capt_number": 1,
+    "url_capt_video": "http://minio-storage:9002/video-clips/caption_12345678.mp4"
+  }
+]
+```
 
 ---
 
@@ -425,14 +462,13 @@ curl -X POST http://host.docker.internal:8000/generate_thumbnail \
 | `line_spacing` | 30 | Pixel value (overrides line_height) |
 | `letter_spacing` | 5 | Extra pixels between characters |
 
-### Position Options
+### Position Object (`position`)
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `x` | "center" | left / center / right / pixel |
-| `y` | "bottom" | top / center / bottom / pixel |
-| `margin_bottom` | 250 | Distance from bottom |
-| `edge_padding` | 40 | Min padding from frame edges |
+| Property | Default | Description |
+|----------|---------|-------------|
+| `position` | "bottom_right" | `top_left`, `top_center`, `top_right`, `center_left`, `center`, `center_right`, `bottom_left`, `bottom_center`, `bottom_right` |
+| `margin_x` | 30 | Horizontal margin in **pixels** (e.g., 30) or **percentage** (e.g., "5%") |
+| `margin_y` | 30 | Vertical margin in **pixels** (e.g., 30) or **percentage** (e.g., "10%") |
 | `max_lines` | 3 | Max lines (truncate with ...) |
 
 ### Background Options
@@ -451,7 +487,7 @@ curl -X POST http://host.docker.internal:8000/generate_thumbnail \
 
 ## 5. Video Source Overlay
 
-Tambahkan text overlay sumber video (channel name) pada video dengan **Advanced Styling** (Rounded Box, Stroke, Mixed Styles).
+Tambahkan text overlay sumber video (channel name) dan logo pada video. **Synchronous** (langsung return URL).
 
 ```bash
 curl -X POST http://host.docker.internal:8000/add_video_source \
@@ -460,6 +496,8 @@ curl -X POST http://host.docker.internal:8000/add_video_source \
     "video_url": "http://minio-video:9002/video-clips/job_xxx.mp4",
     "channel_name": "MyYoutube Channel",
     "prefix": "Watch full video on:",
+    "logo_url": "http://minio-video:9002/logos/icon.png",
+    "logo_scale": 1.2,
     "prefix_style": {
         "font_family": "Montserrat",
         "font_size": 30,
@@ -475,11 +513,14 @@ curl -X POST http://host.docker.internal:8000/add_video_source \
         "stroke_width": 2
     },
     "background": {
-        "color": "rgba(0,0,0,0.8)",
-        "radius": 15,
-        "padding": 20,
-        "border_color": "#FFFFFF",
-        "border_width": 3
+    "channel_style": {
+        "font_family": "Montserrat",
+        "font_size": 40,
+        "color": "#FFFFFF",
+        "bold": true,
+        "italic": false,
+        "stroke_color": "#000000",
+        "stroke_width": 2
     },
     "position": {
         "position": "top_right",
@@ -491,15 +532,19 @@ curl -X POST http://host.docker.internal:8000/add_video_source \
 
 ### Video Source Parameters
 
-| Name | Type | Type | Description |
-|------|------|---------|-------------|
-| `video_url` | string | required | Video URL |
-| `channel_name` | string | required | Main text to display |
-| `prefix` | string | "FullVideo:" | Text prefix |
-| `prefix_style` | object | {} | Style for prefix text |
-| `channel_style` | object | {} | Style for channel text |
-| `background` | object | {} | Background box styling |
-| `position` | object | {} | Positioning settings |
+| Name | Type | Description |
+|------|------|-------------|
+| `video_url` | string | **Required**. Video URL |
+| `channel_name` | string | **Required**. Main text to display |
+| `prefix` | string | Text prefix (default: "Source:") |
+| `logo_url` | string | **Optional**. URL logo image (PNG recommended) |
+| `logo_scale` | float | **Optional**. Scale logo relative to text height (default: 1.0) |
+| `line_spacing` | int | **Optional**. Space between text lines (default: 8) |
+| `logo_offset_y` | int | **Optional**. Vertical adjustment for logo (default: 0) |
+| `logo_spacing` | int | **Optional**. Horizontal space between logo and text (default: 10) |
+| `prefix_style` | object | Style for prefix text |
+| `channel_style` | object | Style for channel text |
+| `position` | object | Positioning settings |
 
 ### Style Object (`prefix_style` & `channel_style`)
 
@@ -519,11 +564,6 @@ curl -X POST http://host.docker.internal:8000/add_video_source \
 |----------|---------|-------------|
 | `enabled` | true | Show background box |
 | `color` | "rgba(0,0,0,0.5)" | Background color |
-| `padding` | 20 | Padding around text |
-| `radius` | 10 | **Corner Radius** (Rounded Box) |
-| `border_color` | null | Border line color |
-| `border_width` | 0 | Border line thickness |
-
 ### Position Options
 
 | Position | Description |
@@ -542,7 +582,7 @@ curl -X POST http://host.docker.internal:8000/add_video_source \
 
 ## 6. Image Watermark
 
-Tambahkan watermark gambar (logo, PNG dengan transparansi) pada video.
+Tambahkan watermark gambar (logo, PNG dengan transparansi) pada video. **Synchronous** (langsung return URL).
 
 ```bash
 curl -X POST http://host.docker.internal:8000/add_image_watermark \
@@ -584,9 +624,76 @@ curl -X POST http://host.docker.internal:8000/add_image_watermark \
 
 ---
 
-## 7. Merge Videos
 
-Gabungkan beberapa video menjadi satu.
+---
+
+## 7. Overlay Notification (Green Screen)
+
+Add a video overlay (like a subscribe button) onto a main video, with automatic or manual background removal.
+
+**Endpoint:** `POST /overlay_notification`
+
+**Payload:**
+```json
+{
+  "video_url": "http://minio:9000/bucket/main.mp4",
+  "overlay_url": "http://minio:9000/bucket/subscribe_green_screen.mp4",
+  "start_time": "end-1.5", // "end", "end-2", "end+1" supported
+  "position": {
+    "preset": "bottom_right",
+    "margin_x": 30,
+    "margin_y": 30
+  },
+  "resize": {
+    "scale": 0.5
+  },
+  "chroma_key": {
+    "auto": true
+  }
+}
+```
+
+**Advanced Chroma Key:**
+```json
+  "chroma_key": {
+    "auto": false,
+    "color": "#00FF00",
+    "similarity": 0.3,
+    "blend": 0.1,
+    "crop": true // Set to false to disable Smart Auto-Crop
+  }
+}
+```
+
+**Position Presets (`position.preset`):**
+
+> **Note:** The system automatically applies **Smart Auto-Crop** (enabled by default) with a **safety padding** to accommodate animation movements. It removes empty background space before applying the position preset. You can disable this by setting `chroma_key.crop: false`.
+
+| Preset | Position |
+|--------|----------|
+| `top_left` | Top Left |
+| `top_center` | Top Center |
+| `top_right` | Top Right |
+| `center` | Center (Middle) |
+| `bottom_left` | Bottom Left |
+| `bottom_center` | Bottom Center |
+| `bottom_right` | Bottom Right (Default) |
+
+**Custom Position:**
+To use custom coordinates (e.g., center with margin), remove `preset` and use `x`, `y` (supports FFmpeg variables like `main_w`, `overlay_w`).
+
+```json
+  "position": {
+    "x": "(main_w-overlay_w)/2",
+    "y": "main_h-overlay_h-50"
+  }
+```
+
+---
+
+## 8. Merge Videos
+
+Gabungkan beberapa video menjadi satu. **Synchronous** (langsung return URL).
 
 ```bash
 curl -X POST http://host.docker.internal:8000/merge_videos \
@@ -603,50 +710,62 @@ Video akan digabung secara berurutan.
 
 ---
 
-## 8. Image to Video
+## 9. Image to Video
 
 Buat video dari gambar (single atau slideshow).
 
 ```bash
+# Example 1: Slideshow with Transition
 curl -X POST http://host.docker.internal:8000/image_to_video \
   -H "Content-Type: application/json" \
   -d '{
     "images": [
-      { "image_url": "http://minio-video:9002/images/1.jpg", "duration": 3 },
-      { "image_url": "http://minio-video:9002/images/2.jpg", "duration": 3 }
+      { "image_url": "http://minio-video:9002/images/1.jpg", "duration": 4.0 },
+      { "image_url": "http://minio-video:9002/images/2.jpg", "duration": 4.0 },
+      { "image_url": "http://minio-video:9002/images/3.jpg", "duration": 4.0 }
     ],
-    "transition": "fade"
+    "fps": 30,
+    "transition": "dissolve",
+    "callback_url": "https://your-domain.com/webhook"
+  }'
+
+# Example 2: Single Image with Motion (Ken Burns)
+curl -X POST http://host.docker.internal:8000/image_to_video \
+  -H "Content-Type: application/json" \
+  -d '{
+    "images": [
+      { "image_url": "http://minio-video:9002/images/cover.jpg", "duration": 15.0 }
+    ],
+    "fps": 60,
+    "motion": "zoom_in",
+    "motion_intensity": 0.5
   }'
 ```
 
 ### Image to Video Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `images` | array | required | List of image objects |
-| `images[].image_url` | string | required | URL of image |
-| `images[].duration` | float | 3.0 | Seconds to show image |
-| `fps` | int | 30 | Frames per second |
-| `transition` | string | null | Transition effect |
-| `motion` | string | null | Motion/Ken Burns effect |
-| `motion_intensity` | float | 0.3 | Intensitas motion (0.1-1.0) |
+| Parameter | Tipe | Default | Wajib? | Deskripsi |
+|-----------|------|---------|--------|-----------|
+| **`images`** | `list` | - | **YA** | Daftar gambar yang akan dijadikan video |
+| `images[].image_url`| `str` | - | **YA** | URL gambar (support HTTP external & MinIO interneal) |
+| `images[].duration` | `float`| `3.0` | Tidak | Durasi tampil per gambar (detik) |
+| **`fps`** | `int` | `30` | Tidak | Frame rate output video |
+| **`transition`** | `str` | `null` | Tidak | Efek transisi antar gambar (SlideShow only) |
+| **`motion`** | `str` | `null` | Tidak | Efek gerak / Ken Burns (Single Image only) |
+| **`motion_intensity`**| `float`| `0.3` | Tidak | Kekuatan efek motion (0.1 = halus, 1.0 = kuat/cepat) |
+| **`callback_url`** | `str` | `null` | Tidak | Webhook URL untuk notifikasi saat job selesai |
 
-### Transition Options
+### Transition Options (Slideshow)
 
-| Transition | Description |
-|------------|-------------|
-| `fade` | Fade dissolve |
-| `wipeleft` | Wipe ke kiri |
-| `wiperight` | Wipe ke kanan |
-| `slideleft` | Slide ke kiri |
-| `slideright` | Slide ke kanan |
-| `slideup` | Slide ke atas |
-| `slidedown` | Slide ke bawah |
-| `radial` | Radial sweep |
-| `circleopen` | Circle open |
-| `circleclose` | Circle close |
+| Category | Options |
+|----------|---------|
+| **Basic** | `fade`, `dissolve`, `pixelize` |
+| **Wipe** | `wipeleft`, `wiperight`, `wipeup`, `wipedown` |
+| **Slide** | `slideleft`, `slideright`, `slideup`, `slidedown` |
+| **Shape** | `circleopen`, `circleclose`, `circlecrop`, `radial` |
+| **Open/Close** | `horzopen`, `horzclose`, `vertopen`, `vertclose` |
 
-### Motion Options (Ken Burns Effect)
+### Motion Options (Single Image - Ken Burns)
 
 | Motion | Description |
 |--------|-------------|
@@ -661,7 +780,7 @@ curl -X POST http://host.docker.internal:8000/image_to_video \
 
 ---
 
-## 9. Check Job Status
+## 10. Check Job Status
 
 ```bash
 curl http://host.docker.internal:8000/job/{job_id}
@@ -669,7 +788,7 @@ curl http://host.docker.internal:8000/job/{job_id}
 
 ---
 
-## 10. Download Result
+## 11. Download Result
 
 ```bash
 # External access (browser)
@@ -726,7 +845,222 @@ curl -o clip.mp4 "http://localhost:9002/video-clips/{job_id}.mp4"
 - **Partial download**: Faster processing
 - **High quality**: H.264 CRF 18
 
-## 11. Streamlit Dashboard
+## 12. Media Metadata
+
+Dapatkan metadata detail dari berbagai jenis media (YouTube, Video File, Audio File, Image File).
+
+```bash
+curl -X POST http://host.docker.internal:8000/media_info \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.youtube.com/watch?v=VIDEO_ID"
+    // OR
+    "media_url": "http://minio-video:9002/..."
+  }'
+```
+
+### Media Info Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | yes* | URL Media (YouTube / Direct File URL) |
+| `media_url` | string | yes* | Alias for `url` (Use either one) |
+
+### Response Examples
+
+#### YouTube
+```json
+{
+  "status": "success",
+  "type": "video",
+  "source": "youtube",
+  "metadata": {
+    "title": "Video Title",
+    "channel": "Channel Name",
+    "duration": 956,
+    "width": 640,
+    "height": 360,
+    "thumbnail": "https://i.ytimg.com/...",
+    "view_count": 100000
+  }
+}
+```
+
+#### Direct Media File (Video/Audio)
+```json
+{
+  "status": "success",
+  "type": "video",
+  "source": "direct",
+  "metadata": {
+    "audio_bitrate": 192336,
+    "audio_bitrate_kbps": 192,
+    "audio_channels": 2,
+    "audio_codec": "aac",
+    "audio_codec_long": "AAC (Advanced Audio Coding)",
+    "audio_sample_rate": 44100,
+    "audio_sample_rate_khz": 44,
+    "duration": 15.023311,
+    "duration_formatted": "00:00:15.02",
+    "filesize": 2498125,
+    "filesize_mb": 2.38,
+    "format": "mov,mp4,m4a,3gp,3g2,mj2",
+    "has_audio": true,
+    "has_video": true,
+    "overall_bitrate": 1330266,
+    "overall_bitrate_mbps": 1.33,
+    "width": 1280,
+    "height": 720,
+    "video_codec": "h264",
+    "video_codec_long": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+    "fps": 23.98
+  }
+}
+```
+
+```
+
+---
+
+## 12. Trim Video
+
+Endpoint synchronous untuk memotong video berdasarkan start dan end time.
+
+```bash
+curl -X POST http://host.docker.internal:8000/trim \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://minio-nca:9000/video-clips/input.mp4",
+    "start": "00:00:05",
+    "end": "00:00:10.5",
+    "video_codec": "libx264"
+  }'
+```
+
+### Trim Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_url` | string | required | URL Video Source |
+| `start` | string | required | Start time (e.g. `00:00:05` or `5.0`) |
+| `end` | string | required | End time (e.g. `00:00:10` or `10.0`) |
+| `video_codec` | string | "libx264" | Output video codec |
+| `video_preset`| string | "faster" | Encoding preset (ultrafast - veryslow) |
+| `video_crf` | int | 28 | Quality (Lower = Better, Higher = Smaller) |
+| `audio_codec` | string | "aac" | Audio codec |
+| `audio_bitrate`| string | "128k" | Audio bitrate |
+| `id` | string | null | Custom ID for tracking |
+
+### Response Format
+
+Mengembalikan JSON List dengan detail job.
+
+```json
+[
+  {
+    "build_number": 1,
+    "code": 200,
+    "endpoint": "/v1/video/trim",
+    "id": "custom-id",
+    "job_id": "uuid-job-id",
+    "message": "success",
+    "response": "http://minio-nca:9000/video-clips/uuid_output.mp4",
+    "run_time": 2.44,
+    "total_time": 2.45
+  }
+]
+```
+
+```
+
+---
+
+## 13. Video Composer
+
+Endpoint untuk membuat komando FFmpeg kompleks secara fleksibel.
+
+```bash
+```bash
+curl -X POST http://host.docker.internal:8000/compose \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      {
+        "file_url": "http://minio-storage:9002/video-clips/video1.mp4"
+      },
+      {
+        "url": "http://minio-storage:9002/video-clips/audio1.mp4"
+      }
+    ],
+    "outputs": [
+      {
+        "options": [
+          { "option": "-map", "argument": "0:v:0" },
+          { "option": "-map", "argument": "1:a:0" },
+          { "option": "-c:v", "argument": "copy" },
+          { "option": "-c:a", "argument": "aac" },
+          { "option": "-shortest" }
+        ]
+      }
+    ]
+  }'
+```
+
+### Compose Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `inputs` | list | required | List of input files |
+| `inputs[].url` | string | required | Input URL (or `file_url`) |
+| `inputs[].file_url` | string | optional | Alias for `url` |
+| `inputs[].options`| list | [] | FFmpeg options applied *before* `-i` |
+| `filter_complex` | string | null | FFmpeg filter string |
+| `outputs` | list | [] | Structured output options |
+| `outputs[].options` | list | [] | List of `{option, argument}` objects |
+| `output_args` | list | [] | Legacy flat list of output arguments |
+| `output_format`| string | "mp4" | Output file extension |
+
+```
+
+---
+
+## 14. Add Video Source Overlay
+
+Endpoint synchronous untuk menambahkan overlay teks (Source/Credit) ke video.
+
+```bash
+curl -X POST http://host.docker.internal:8000/add_video_source \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://minio-nca:9000/video-clips/input.mp4",
+    "channel_name": "MyChannel",
+    "prefix": "Source:",
+    "position": { 
+      "position": "bottom_right", 
+      "margin_x": 30, 
+      "margin_y": 30 
+    },
+    "prefix_style": { "color": "#FF0000", "bold": true },
+    "channel_style": { "color": "#FFFFFF", "bold": true },
+    "background": { "enabled": true, "color": "rgba(0,0,0,0.5)", "radius": 10 }
+  }'
+```
+
+### Video Source Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_url` | string | required | Input Video URL |
+| `channel_name`| string | required | Text to display as channel name |
+| `prefix` | string | "FullVideo:"| Prefix text |
+| `position` | object | bottom_right | `{position, margin_x, margin_y}` |
+| `prefix_style` | object | {} | Font style for prefix |
+| `channel_style`| object | {} | Font style for channel name |
+| `background` | object | {} | Background box style |
+
+---
+
+## 15. Streamlit Dashboard
 
 UI berbasis Web untuk memudahkan penggunaan pipeline tanpa curl command.
 
@@ -763,3 +1097,68 @@ UI berbasis Web untuk memudahkan penggunaan pipeline tanpa curl command.
 6.  **Automa Integration**
     *   **One-Click Submit**: Kirim job langsung ke endpoint webhook n8n.
     *   Payload mencakup URL, channel name, transcript, dan parameter kamera.
+
+---
+
+## Service Management
+
+### 1. Restart All Services
+
+Untuk merestart seluruh stack (API, Worker, Dashboard, Database):
+
+```bash
+# Restart containers only
+docker-compose restart
+
+# OR completely rebuild and start (Recommended for updates)
+docker-compose down
+docker-compose up -d --build
+```
+
+### 2. Restart Specific Services
+
+Jika Anda hanya mengubah kode di satu service, cukup restart service tersebut:
+
+#### Video Worker (Logic Processing)
+Gunakan ini jika mengubah `worker.py`, `modules/*.py`, atau `fonts/`.
+
+```bash
+docker restart video_worker
+# OR
+docker-compose restart video-worker
+```
+
+#### Video API (Endpoints)
+Gunakan ini jika mengubah `main.py` di `video-api`.
+
+```bash
+docker restart video_api
+# OR
+docker-compose restart video-api
+```
+
+#### Dashboard (Streamlit UI)
+Gunakan ini jika mengubah `app.py` atau UI logic.
+
+```bash
+docker restart video_dashboard
+# OR
+docker-compose restart dashboard
+```
+
+### 3. View Logs
+
+Memantau logs untuk debugging:
+
+```bash
+# Worker Logs (Processing loop)
+docker logs video_worker -f
+
+# API Logs (Requests)
+docker logs video_api -f
+
+# Dashboard Logs
+docker logs video_dashboard -f
+```
+
+docker-compose restart video-worker

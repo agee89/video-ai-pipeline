@@ -1,0 +1,26 @@
+{
+  "\ud83c\udfac Cinematic Interview (Stable)": {
+    "clipper_sens": 3,
+    "clipper_smooth": 0.1,
+    "clipper_zoom_th": 25.0,
+    "clipper_zoom_lvl": 1.15
+  },
+  "\ud83c\udf99\ufe0f Standard Podcast (Balanced)": {
+    "clipper_sens": 5,
+    "clipper_smooth": 0.15,
+    "clipper_zoom_th": 20.0,
+    "clipper_zoom_lvl": 1.15
+  },
+  "\u26a1 Dynamic / Chaos (Fast)": {
+    "clipper_sens": 8,
+    "clipper_smooth": 0.3,
+    "clipper_zoom_th": 15.0,
+    "clipper_zoom_lvl": 1.25
+  },
+  "Serius Stabil": {
+    "clipper_sens": 1,
+    "clipper_smooth": 0.2,
+    "clipper_zoom_th": 30.0,
+    "clipper_zoom_lvl": 1.0
+  }
+}

@@ -205,24 +205,13 @@ class CameraPathAnalyzer:
             if frame_idx % detect_interval == 0 or is_cut:
                 best_face = None
                 best_score = -1
-                
-                # Log detection count
-                face_count = len(faces_this_frame)
-                if face_count == 0:
-                     logger.info(f"[Analyzer] Frame {frame_idx}: No faces detected. Holding position.")
-                
                 for f in faces_this_frame:
                     b = f['bucket']
                     activity = self.face_activity.get(b, 0)
                     score = activity * 2.0 + f['size'] * 10.0
-                    f['score'] = score # Save for logging
                     if score > best_score:
                         best_score = score
                         best_face = f
-                
-                if best_face and best_face != getattr(self, 'last_best_face', None):
-                     logger.info(f"[Analyzer] Frame {frame_idx}: New Best Candidate -> Bucket {best_face['bucket']} (Score: {best_face['score']:.1f}, Lip: {best_face['lip_activity']:.1f}, Size: {best_face['size']:.1f})")
-
                 self.last_best_face = best_face
             
             best_face = getattr(self, 'last_best_face', None)
@@ -234,18 +223,13 @@ class CameraPathAnalyzer:
                 if self.tracked_bucket is None:
                      self.tracked_bucket = best_face['bucket']
                      self.tracked_x = float(best_face['x'])
-                     logger.info(f"[Analyzer] Initial Lock: Bucket {self.tracked_bucket} at x={int(self.tracked_x)}")
                 else:
                     if best_face['bucket'] != self.tracked_bucket:
                         current_activity = self.face_activity.get(self.tracked_bucket, 0)
                         best_activity = self.face_activity.get(best_face['bucket'], 0)
-                        
-                        # Threshold for switching
                         if best_activity > current_activity * 2 + 0.5:
-                            prev_bucket = self.tracked_bucket
                             self.tracked_bucket = best_face['bucket']
                             self.tracked_x = float(best_face['x'])
-                            logger.info(f"[Analyzer] 🔄 SWITCH: Bucket {prev_bucket} -> {self.tracked_bucket} | Reason: Significant Activity (New: {best_activity:.1f} > Old: {current_activity:.1f})")
                 
                 # Stabilization
                 target_f = next((f for f in faces_this_frame if f['bucket'] == self.tracked_bucket), None)
@@ -424,7 +408,6 @@ def reframe_to_portrait_with_face_tracking(input_path: str, output_name: str, se
         return final_output
 
     except Exception as e:
-        logger.error(f"❌ [FaceTrack] FAILED: {e}")
+        logger.error(f"[FaceTrack] Error: {e}")
         logger.error(traceback.format_exc())
-        logger.info("[FaceTrack] ⚠️ TRIGGERING FALLBACK: Reverting to simple dynamic center crop (no tracking).")
         return reframe_to_portrait(input_path, output_name)
